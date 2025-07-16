@@ -1,45 +1,87 @@
 import * as THREE from 'three';
 import { Projectile } from './Projectile.js';
+import { TOWER_TYPES } from './TowerTypes.js';
 
 export class Tower {
-    constructor(x, y, z) {
+    constructor(x, y, z, type = 'basic') {
+        const towerConfig = TOWER_TYPES[type.toUpperCase()];
+        
         this.position = new THREE.Vector3(x, y, z);
-        this.range = 3.0;
-        this.damage = 50;
-        this.fireRate = 1.0; // shots per second
+        this.range = towerConfig.range;
+        this.damage = towerConfig.damage;
+        this.fireRate = towerConfig.fireRate;
+        this.type = type;
         this.lastShotTime = 0;
         
-        // Create tower mesh (blue cylinder)
-        const geometry = new THREE.CylinderGeometry(0.3, 0.4, 1.0, 8);
-        const material = new THREE.MeshPhongMaterial({ color: 0x4444ff });
-        this.mesh = new THREE.Mesh(geometry, material);
+        // Create tower mesh
+        this.mesh = new THREE.Mesh(
+            towerConfig.model.base.geometry,
+            towerConfig.model.base.material.clone()
+        );
         this.mesh.position.copy(this.position);
         this.mesh.castShadow = true;
         
-        // Create range indicator (visible circle at base)
+        // Create range indicator
         const rangeGeometry = new THREE.RingGeometry(this.range - 0.1, this.range, 32);
         const rangeMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x00ff00, 
+            color: towerConfig.color, 
             transparent: true, 
             opacity: 0.2,
             side: THREE.DoubleSide
         });
         this.rangeIndicator = new THREE.Mesh(rangeGeometry, rangeMaterial);
         this.rangeIndicator.rotation.x = -Math.PI / 2;
-        this.rangeIndicator.position.set(0, -0.49, 0); // Position relative to tower base
+        this.rangeIndicator.position.set(0, -0.49, 0);
         this.mesh.add(this.rangeIndicator);
         
-        // Barrel for visual appeal
-        const barrelGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.8, 6);
-        const barrelMaterial = new THREE.MeshPhongMaterial({ color: 0x333333 });
-        this.barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
-        this.barrel.position.set(0, 0.4, 0);
-        this.mesh.add(this.barrel);
+        // Create barrel (except for area tower)
+        if (this.type !== 'area') {
+            this.barrel = new THREE.Mesh(
+                towerConfig.model.barrel.geometry,
+                towerConfig.model.barrel.material.clone()
+            );
+            this.barrel.position.set(0, 0.4, 0);
+            this.mesh.add(this.barrel);
+        }
+        
+        // For area tower, create pulse effect
+        if (this.type === 'area') {
+            this.pulseEffect = new THREE.Mesh(
+                new THREE.CircleGeometry(this.range, 32),
+                new THREE.MeshBasicMaterial({
+                    color: towerConfig.color,
+                    transparent: true,
+                    opacity: 0.0,
+                    side: THREE.DoubleSide
+                })
+            );
+            this.pulseEffect.rotation.x = -Math.PI / 2;
+            this.pulseEffect.position.set(0, -0.48, 0);
+            this.mesh.add(this.pulseEffect);
+            
+            // Add glow effect
+            const glowGeometry = new THREE.CircleGeometry(this.range * 0.8, 32);
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: towerConfig.color,
+                transparent: true,
+                opacity: 0.2,
+                side: THREE.DoubleSide
+            });
+            this.glowEffect = new THREE.Mesh(glowGeometry, glowMaterial);
+            this.glowEffect.rotation.x = -Math.PI / 2;
+            this.glowEffect.position.set(0, -0.47, 0);
+            this.mesh.add(this.glowEffect);
+        }
         
         this.currentTarget = null;
     }
     
     findTarget(enemies) {
+        if (this.type === 'area') {
+            // Area tower doesn't need to find specific target
+            return enemies.length > 0 ? enemies[0] : null;
+        }
+        
         let closestEnemy = null;
         let closestDistance = Infinity;
         
@@ -56,8 +98,8 @@ export class Tower {
         
         this.currentTarget = closestEnemy;
         
-        // Rotate barrel towards target
-        if (this.currentTarget) {
+        // Rotate barrel towards target (except for area tower)
+        if (this.currentTarget && this.type !== 'area') {
             const targetPos = this.currentTarget.getPosition();
             const direction = new THREE.Vector3().subVectors(targetPos, this.position);
             direction.y = 0; // Keep barrel horizontal
@@ -70,31 +112,66 @@ export class Tower {
         return this.currentTarget;
     }
     
-    canShoot() {
-        const currentTime = Date.now();
-        const timeSinceLastShot = currentTime - this.lastShotTime;
-        const shootInterval = 1000 / this.fireRate; // Convert to milliseconds
-        
-        return timeSinceLastShot >= shootInterval;
-    }
-    
     shoot(target) {
-        if (!this.canShoot() || !target) return null;
+        if (!this.canShoot()) return null;
         
         this.lastShotTime = Date.now();
         
-        // Create projectile starting from the barrel tip
+        if (this.type === 'area') {
+            // Pulse attack for area tower
+            const enemies = target; // In this case, target is the enemies array
+            const deadEnemies = [];
+            
+            for (const enemy of enemies) {
+                const distance = this.position.distanceTo(enemy.getPosition());
+                if (distance <= this.range) {
+                    enemy.takeDamage(this.damage);
+                    if (!enemy.isAlive()) {
+                        deadEnemies.push(enemy);
+                    }
+                }
+            }
+            
+            // Animate pulse effect
+            const pulseAnimation = () => {
+                const startOpacity = 0.5;
+                const duration = 500; // ms
+                const startTime = Date.now();
+                
+                const animate = () => {
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    
+                    this.pulseEffect.material.opacity = startOpacity * (1 - progress);
+                    
+                    if (progress < 1) {
+                        requestAnimationFrame(animate);
+                    }
+                };
+                
+                this.pulseEffect.material.opacity = startOpacity;
+                animate();
+            };
+            
+            pulseAnimation();
+            return deadEnemies; // Return list of enemies that died for the game loop to handle
+        }
+        
+        // Regular projectile for other towers
         const barrelTip = new THREE.Vector3(0, 0.8, 0);
         const worldBarrelTip = barrelTip.clone();
         this.mesh.localToWorld(worldBarrelTip);
         
-        const projectile = new Projectile(
+        return new Projectile(
             worldBarrelTip,
             target,
-            this.damage
+            this.damage,
+            0 // No splash damage for regular towers
         );
-        
-        return projectile;
+    }
+    
+    canShoot() {
+        return Date.now() - this.lastShotTime > (1000 / this.fireRate);
     }
     
     getPosition() {

@@ -1,16 +1,19 @@
 import * as THREE from 'three';
 
 export class Projectile {
-    constructor(startPosition, target, damage) {
+    constructor(startPosition, target, damage, splashRadius = 0) {
         this.target = target;
         this.damage = damage;
+        this.splashRadius = splashRadius;
         this.speed = 8.0; // units per second
         this.maxDistance = 15.0; // Maximum travel distance before removal
         this.traveledDistance = 0;
         
         // Create projectile mesh (small yellow sphere)
         const geometry = new THREE.SphereGeometry(0.1, 6, 4);
-        const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+        const material = new THREE.MeshBasicMaterial({ 
+            color: this.splashRadius > 0 ? 0xff00ff : 0xffff00 
+        });
         this.mesh = new THREE.Mesh(geometry, material);
         this.mesh.position.copy(startPosition);
         
@@ -24,17 +27,7 @@ export class Projectile {
     
     updateDirection() {
         if (this.target && this.target.isAlive()) {
-            // Predict target position based on enemy movement
-            const targetPos = this.target.getPosition().clone();
-            
-            // Simple prediction: assume enemy continues in current direction
-            if (this.target.direction) {
-                const timeToHit = this.mesh.position.distanceTo(targetPos) / this.speed;
-                const predictedOffset = this.target.direction.clone().multiplyScalar(this.target.speed * timeToHit);
-                targetPos.add(predictedOffset);
-            }
-            
-            this.direction.subVectors(targetPos, this.mesh.position).normalize();
+            this.direction.subVectors(this.target.getPosition(), this.mesh.position).normalize();
         }
     }
     
@@ -71,7 +64,15 @@ export class Projectile {
         return this.mesh.position;
     }
     
-    getDamage() {
-        return this.damage;
+    // New method to handle splash damage
+    getSplashTargets(enemies) {
+        if (this.splashRadius <= 0) return [];
+        
+        const position = this.getPosition();
+        return enemies.filter(enemy => {
+            if (!enemy.isAlive() || enemy === this.target) return false;
+            const distance = position.distanceTo(enemy.getPosition());
+            return distance <= this.splashRadius;
+        });
     }
 } 
