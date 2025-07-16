@@ -4,11 +4,21 @@ import { Tower } from './Tower.js';
 import { Projectile } from './Projectile.js';
 import { GameState } from './GameState.js';
 import { TOWER_TYPES } from './TowerTypes.js';
+import { ELEMENTS } from './Elements.js'; // Added for element testing
+import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 
 // Scene setup
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
+
+// CSS2D renderer setup for debug labels
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(window.innerWidth, window.innerHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0';
+labelRenderer.domElement.style.pointerEvents = 'none';
+document.body.appendChild(labelRenderer.domElement);
 
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
@@ -250,8 +260,8 @@ function onMouseUp(event) {
             if (isValidTowerPosition(gridX, gridZ)) {
                 const towerConfig = TOWER_TYPES[selectedTowerType.toUpperCase()];
                 if (gameState.money >= towerConfig.cost) {
-                    // Place the actual tower
-                    const tower = new Tower(gridX, 0.5, gridZ, selectedTowerType);
+                    // Place the actual tower with the selected element
+                    const tower = new Tower(gridX, 0.5, gridZ, selectedTowerType, selectedElement);
                     towers.push(tower);
                     scene.add(tower.mesh);
                     gameState.spendMoney(towerConfig.cost);
@@ -370,6 +380,7 @@ function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    labelRenderer.setSize(window.innerWidth, window.innerHeight);
 }
 
 // Game loop
@@ -395,6 +406,7 @@ function animate() {
         
         // Remove enemies that reached the end
         if (enemy.hasReachedEnd()) {
+            enemy.cleanup(); // Clean up debug label
             scene.remove(enemy.mesh);
             enemies.splice(i, 1);
             gameState.removeEnemy();
@@ -410,6 +422,7 @@ function animate() {
                 for (const deadEnemy of deadEnemies) {
                     const index = enemies.indexOf(deadEnemy);
                     if (index !== -1) {
+                        deadEnemy.cleanup(); // Clean up debug label
                         scene.remove(deadEnemy.mesh);
                         enemies.splice(index, 1);
                         gameState.removeEnemy();
@@ -441,10 +454,12 @@ function animate() {
             if (projectile.splashRadius > 0) {
                 const splashTargets = projectile.getSplashTargets(enemies);
                 for (const splashTarget of splashTargets) {
-                    splashTarget.takeDamage(projectile.damage * 0.5); // 50% damage for splash
+                    // Apply splash damage with elemental effects
+                    projectile.applyDamage(splashTarget);
                     if (!splashTarget.isAlive()) {
                         const index = enemies.indexOf(splashTarget);
                         if (index !== -1) {
+                            splashTarget.cleanup();
                             scene.remove(splashTarget.mesh);
                             enemies.splice(index, 1);
                             gameState.removeEnemy();
@@ -455,18 +470,25 @@ function animate() {
                 }
             }
             
-            // Handle direct hit
+            // Handle direct hit with elemental effects
             const enemyIndex = enemies.indexOf(projectile.target);
             if (enemyIndex !== -1) {
-                // Apply damage and check if enemy died
-                projectile.target.takeDamage(projectile.damage);
+                // Apply damage and elemental effects
+                projectile.applyDamage(projectile.target);
                 if (!projectile.target.isAlive()) {
+                    projectile.target.cleanup();
                     scene.remove(projectile.target.mesh);
                     enemies.splice(enemyIndex, 1);
                     gameState.removeEnemy();
                     gameState.addMoney(10);
                     gameState.addScore(100);
                 }
+            }
+            
+            // Create impact effect
+            const impactEffect = projectile.createImpactEffect();
+            if (impactEffect) {
+                scene.add(impactEffect);
             }
             
             // Remove projectile
@@ -483,8 +505,152 @@ function animate() {
     gameState.updateHUD();
     updateTowerMenu();
     
+    // Render scene and labels
     renderer.render(scene, camera);
+    labelRenderer.render(scene, camera);
 }
+
+// Add debug element selection UI
+const elementDebugContainer = document.createElement('div');
+elementDebugContainer.id = 'element-debug';
+elementDebugContainer.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 15px;
+    background: rgba(0, 0, 0, 0.8);
+    border-radius: 8px;
+    color: white;
+    font-family: Arial, sans-serif;
+`;
+
+const elementTitle = document.createElement('h3');
+elementTitle.textContent = 'Element Testing';
+elementTitle.style.margin = '0 0 10px 0';
+elementDebugContainer.appendChild(elementTitle);
+
+// Add element buttons
+const elements = ['FIRE', 'WATER', 'NATURE', 'LIGHT', 'DARKNESS', 'EARTH'];
+let selectedElement = null;
+
+elements.forEach(element => {
+    const button = document.createElement('button');
+    button.textContent = element;
+    button.style.cssText = `
+        margin: 5px;
+        padding: 8px 15px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.3s;
+    `;
+    
+    // Set color based on element
+    const elementConfig = ELEMENTS[element];
+    const color = '#' + elementConfig.color.toString(16).padStart(6, '0');
+    button.style.background = color;
+    button.style.color = ['LIGHT', 'WATER', 'NATURE'].includes(element) ? 'black' : 'white';
+    
+    button.addEventListener('click', () => {
+        selectedElement = element;
+        // Update all buttons to show selection
+        elementDebugContainer.querySelectorAll('button').forEach(btn => {
+            btn.style.transform = btn.textContent === element ? 'scale(1.1)' : 'scale(1)';
+            btn.style.boxShadow = btn.textContent === element ? '0 0 10px ' + color : 'none';
+        });
+    });
+    
+    elementDebugContainer.appendChild(button);
+});
+
+// Add enemy element selection
+const enemyElementTitle = document.createElement('h3');
+enemyElementTitle.textContent = 'Enemy Element';
+enemyElementTitle.style.margin = '15px 0 10px 0';
+elementDebugContainer.appendChild(enemyElementTitle);
+
+const enemyElementSelect = document.createElement('select');
+enemyElementSelect.style.cssText = `
+    width: 100%;
+    padding: 5px;
+    margin: 5px 0;
+    border-radius: 4px;
+`;
+
+enemyElementSelect.innerHTML = `
+    <option value="">None</option>
+    ${elements.map(element => `<option value="${element}">${element}</option>`).join('')}
+`;
+
+elementDebugContainer.appendChild(enemyElementSelect);
+
+document.body.appendChild(elementDebugContainer);
+
+// Modify enemy spawning to include selected element
+function spawnEnemy() {
+    const currentTime = Date.now();
+    if (currentTime - lastEnemySpawn >= enemySpawnInterval) {
+        const selectedEnemyElement = enemyElementSelect.value || null;
+        const enemy = new Enemy([...pathWaypoints], gameState.wave, selectedEnemyElement);
+        enemies.push(enemy);
+        scene.add(enemy.mesh);
+        gameState.addEnemy();
+        lastEnemySpawn = currentTime;
+    }
+}
+
+// Modify tower placement to include selected element
+function placeTower(x, z, type) {
+    const tower = new Tower(x, 0.5, z, type, selectedElement);
+    towers.push(tower);
+    scene.add(tower.mesh);
+    gameState.placeTower();
+    
+    const towerConfig = TOWER_TYPES[type.toUpperCase()];
+    gameState.spendMoney(towerConfig.cost);
+    updateTowerMenu();
+    
+    return tower;
+}
+
+// Add element upgrade button
+const upgradeButton = document.createElement('button');
+upgradeButton.id = 'upgrade-button';
+upgradeButton.innerHTML = '⚡ Upgrade Tower';
+upgradeButton.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 340px;
+    padding: 10px 20px;
+    background: #44aaff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background 0.3s;
+`;
+document.body.appendChild(upgradeButton);
+
+// Add hover style
+upgradeButton.addEventListener('mouseover', () => {
+    upgradeButton.style.background = '#55bbff';
+});
+upgradeButton.addEventListener('mouseout', () => {
+    upgradeButton.style.background = '#44aaff';
+});
+
+let isUpgradeMode = false;
+
+// Toggle upgrade mode
+upgradeButton.addEventListener('click', () => {
+    isUpgradeMode = !isUpgradeMode;
+    isDestroyMode = false; // Disable destroy mode when entering upgrade mode
+    upgradeButton.style.background = isUpgradeMode ? '#55bbff' : '#44aaff';
+    destroyButton.style.background = '#ff4444';
+    document.body.style.cursor = isUpgradeMode ? 'crosshair' : 'default';
+});
 
 // Event listeners
 window.addEventListener('mousemove', onMouseMove);

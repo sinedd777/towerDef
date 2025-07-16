@@ -1,16 +1,20 @@
 import * as THREE from 'three';
 import { Projectile } from './Projectile.js';
-import { TOWER_TYPES } from './TowerTypes.js';
+import { TOWER_TYPES, createElementalTower } from './TowerTypes.js';
+import { ELEMENTS, getElementalDamage } from './Elements.js';
 
 export class Tower {
-    constructor(x, y, z, type = 'basic') {
-        const towerConfig = TOWER_TYPES[type.toUpperCase()];
+    constructor(x, y, z, type = 'basic', element = null) {
+        const towerConfig = element ? 
+            createElementalTower(type.toUpperCase(), element) : 
+            TOWER_TYPES[type.toUpperCase()];
         
         this.position = new THREE.Vector3(x, y, z);
         this.range = towerConfig.range;
         this.damage = towerConfig.damage;
         this.fireRate = towerConfig.fireRate;
         this.type = type;
+        this.element = element;
         this.lastShotTime = 0;
         
         // Create tower mesh
@@ -21,7 +25,7 @@ export class Tower {
         this.mesh.position.copy(this.position);
         this.mesh.castShadow = true;
         
-        // Create range indicator
+        // Create range indicator with elemental color
         const rangeGeometry = new THREE.RingGeometry(this.range - 0.1, this.range, 32);
         const rangeMaterial = new THREE.MeshBasicMaterial({ 
             color: towerConfig.color, 
@@ -44,7 +48,7 @@ export class Tower {
             this.mesh.add(this.barrel);
         }
         
-        // For area tower, create pulse effect
+        // For area tower, create pulse effect with elemental properties
         if (this.type === 'area') {
             this.pulseEffect = new THREE.Mesh(
                 new THREE.CircleGeometry(this.range, 32),
@@ -59,7 +63,7 @@ export class Tower {
             this.pulseEffect.position.set(0, -0.48, 0);
             this.mesh.add(this.pulseEffect);
             
-            // Add glow effect
+            // Add glow effect with elemental color
             const glowGeometry = new THREE.CircleGeometry(this.range * 0.8, 32);
             const glowMaterial = new THREE.MeshBasicMaterial({
                 color: towerConfig.color,
@@ -71,9 +75,76 @@ export class Tower {
             this.glowEffect.rotation.x = -Math.PI / 2;
             this.glowEffect.position.set(0, -0.47, 0);
             this.mesh.add(this.glowEffect);
+
+            // Add elemental particle system for area towers
+            if (this.element) {
+                this.setupElementalParticles();
+            }
         }
         
         this.currentTarget = null;
+    }
+    
+    setupElementalParticles() {
+        const elementConfig = ELEMENTS[this.element];
+        
+        // Create particle geometry
+        const particleCount = 50;
+        const particles = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        
+        for (let i = 0; i < particleCount * 3; i += 3) {
+            const angle = (Math.random() * Math.PI * 2);
+            const radius = Math.random() * this.range;
+            positions[i] = Math.cos(angle) * radius;
+            positions[i + 1] = 0;
+            positions[i + 2] = Math.sin(angle) * radius;
+        }
+        
+        particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        
+        // Create particle material
+        const particleMaterial = new THREE.PointsMaterial({
+            color: elementConfig.particleColor,
+            size: 0.2,
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending
+        });
+        
+        // Create particle system
+        this.particles = new THREE.Points(particles, particleMaterial);
+        this.particles.position.y = 0.1;
+        this.mesh.add(this.particles);
+        
+        // Animate particles
+        this.animateParticles();
+    }
+    
+    animateParticles() {
+        if (!this.particles) return;
+        
+        const positions = this.particles.geometry.attributes.position.array;
+        const particleCount = positions.length / 3;
+        
+        for (let i = 0; i < particleCount * 3; i += 3) {
+            const angle = Math.atan2(positions[i + 2], positions[i]);
+            const radius = Math.sqrt(positions[i] * positions[i] + positions[i + 2] * positions[i + 2]);
+            
+            // Rotate particles
+            const newAngle = angle + 0.01;
+            positions[i] = Math.cos(newAngle) * radius;
+            positions[i + 2] = Math.sin(newAngle) * radius;
+            
+            // Pulse radius
+            const time = Date.now() * 0.001;
+            const pulseRadius = radius + Math.sin(time + i) * 0.05;
+            positions[i] *= pulseRadius / radius;
+            positions[i + 2] *= pulseRadius / radius;
+        }
+        
+        this.particles.geometry.attributes.position.needsUpdate = true;
+        requestAnimationFrame(() => this.animateParticles());
     }
     
     findTarget(enemies) {
@@ -125,7 +196,17 @@ export class Tower {
             for (const enemy of enemies) {
                 const distance = this.position.distanceTo(enemy.getPosition());
                 if (distance <= this.range) {
-                    enemy.takeDamage(this.damage);
+                    const damage = this.element ? 
+                        getElementalDamage(this.damage, this.element, enemy.element) : 
+                        this.damage;
+                    
+                    enemy.takeDamage(damage);
+                    
+                    // Apply elemental effect if tower has an element
+                    if (this.element && ELEMENTS[this.element]) {
+                        enemy.applyElementalEffect(this.element, ELEMENTS[this.element].effectDuration);
+                    }
+                    
                     if (!enemy.isAlive()) {
                         deadEnemies.push(enemy);
                     }
@@ -154,7 +235,7 @@ export class Tower {
             };
             
             pulseAnimation();
-            return deadEnemies; // Return list of enemies that died for the game loop to handle
+            return deadEnemies;
         }
         
         // Regular projectile for other towers
@@ -162,12 +243,16 @@ export class Tower {
         const worldBarrelTip = barrelTip.clone();
         this.mesh.localToWorld(worldBarrelTip);
         
-        return new Projectile(
+        // Create projectile with elemental properties
+        const projectile = new Projectile(
             worldBarrelTip,
             target,
             this.damage,
-            0 // No splash damage for regular towers
+            this.type === 'splash' ? this.range * 0.5 : 0,
+            this.element // Pass the element to the projectile
         );
+        
+        return projectile;
     }
     
     canShoot() {
@@ -184,5 +269,36 @@ export class Tower {
     
     hideRangeIndicator() {
         this.rangeIndicator.visible = false;
+    }
+    
+    // Method to upgrade tower with an element
+    upgradeElement(element) {
+        if (!ELEMENTS[element]) return false;
+        
+        const elementalConfig = createElementalTower(this.type.toUpperCase(), element);
+        if (!elementalConfig) return false;
+        
+        // Update tower properties
+        this.element = element;
+        this.damage = elementalConfig.damage;
+        
+        // Update visuals
+        this.mesh.material = elementalConfig.model.base.material.clone();
+        if (this.barrel) {
+            this.barrel.material = elementalConfig.model.barrel.material.clone();
+        }
+        
+        // Update range indicator color
+        this.rangeIndicator.material.color.setHex(elementalConfig.color);
+        
+        // Setup particle effects for area towers
+        if (this.type === 'area') {
+            if (this.particles) {
+                this.mesh.remove(this.particles);
+            }
+            this.setupElementalParticles();
+        }
+        
+        return true;
     }
 } 

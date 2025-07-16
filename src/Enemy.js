@@ -1,9 +1,13 @@
 import * as THREE from 'three';
+import { ELEMENTS } from './Elements.js';
+import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 
 export class Enemy {
-    constructor(waypoints, wave = 1) {
+    constructor(waypoints, wave = 1, element = null) {
         this.waypoints = waypoints;
         this.currentWaypointIndex = 0;
+        this.element = element;
+        this.wave = wave; // Store wave number first
         
         // Enhanced scaling based on wave number
         const baseSpeed = 1.0;
@@ -14,45 +18,75 @@ export class Enemy {
         const healthMultiplier = Math.pow(1.25, wave - 1); // Exponential health scaling
         
         this.speed = baseSpeed * speedMultiplier;
+        this.baseSpeed = this.speed; // Store base speed for status effects
         this.health = baseHealth * healthMultiplier;
         this.maxHealth = this.health;
         
+        // Status effect tracking
+        this.activeEffects = new Map();
+        this.baseDamageMultiplier = 1.0;
+        
         // Create enemy mesh with enhanced visual feedback
-        const MAX_SIZE_MULTIPLIER = 2.5; // Maximum 2.5x the original size
+        const MAX_SIZE_MULTIPLIER = 2.5;
         const sizeMultiplier = Math.min(
             MAX_SIZE_MULTIPLIER,
-            1 + (wave - 1) * 0.1 // Base size + 10% per wave, capped at MAX_SIZE_MULTIPLIER
+            1 + (wave - 1) * 0.1
         );
         const size = 0.3 * sizeMultiplier;
         
         const geometry = new THREE.SphereGeometry(size, 8, 6);
         
-        // Enhanced visual appearance for higher waves
-        const waveColor = new THREE.Color(0xff4444);
-        const emissiveIntensity = Math.min(0.5, 0.1 * (wave - 1)); // Stronger glow up to wave 5
+        // Enhanced visual appearance with elemental colors
+        const elementConfig = element ? ELEMENTS[element] : null;
+        const baseColor = elementConfig ? elementConfig.color : 0xff4444;
+        const emissiveIntensity = Math.min(0.5, 0.1 * (wave - 1));
         
         const material = new THREE.MeshPhongMaterial({ 
-            color: waveColor,
-            emissive: new THREE.Color(0xff0000),
+            color: baseColor,
+            emissive: elementConfig ? new THREE.Color(elementConfig.color) : new THREE.Color(0xff0000),
             emissiveIntensity: emissiveIntensity,
-            shininess: Math.min(100, wave * 10) // More metallic look in higher waves
+            shininess: Math.min(100, wave * 10)
         });
         
         this.mesh = new THREE.Mesh(geometry, material);
         this.mesh.castShadow = true;
         
-        // Add wave indicator effect
-        if (wave > 1) {
+        // Add wave and elemental indicator effects
+        if (wave > 1 || element) {
             const ringGeometry = new THREE.RingGeometry(size * 1.2, size * 1.4, 16);
             const ringMaterial = new THREE.MeshBasicMaterial({ 
-                color: 0xff0000,
+                color: elementConfig ? elementConfig.color : 0xff0000,
                 transparent: true,
-                opacity: 0.3 + Math.min(0.5, (wave - 1) * 0.1) // Cap ring opacity at 0.8
+                opacity: 0.3 + Math.min(0.5, (wave - 1) * 0.1)
             });
             const ring = new THREE.Mesh(ringGeometry, ringMaterial);
             ring.rotation.x = -Math.PI / 2;
             this.mesh.add(ring);
+            
+            // Add elemental particle effects
+            if (element) {
+                this.setupElementalEffects(size, elementConfig);
+            }
         }
+
+        // Create debug label
+        const debugDiv = document.createElement('div');
+        debugDiv.className = 'enemy-debug';
+        debugDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        debugDiv.style.color = 'white';
+        debugDiv.style.padding = '4px';
+        debugDiv.style.borderRadius = '4px';
+        debugDiv.style.fontSize = '12px';
+        debugDiv.style.pointerEvents = 'none';
+        debugDiv.style.whiteSpace = 'nowrap';
+        this.debugLabel = new CSS2DObject(debugDiv);
+        this.debugLabel.position.set(0, 1, 0); // Position above the enemy
+
+        // Add debug label to mesh after it's created
+        this.mesh.add(this.debugLabel);
+        
+        // Update debug info initially
+        this.updateDebugInfo();
         
         // Start at the first waypoint
         if (waypoints.length > 0) {
@@ -65,12 +99,71 @@ export class Enemy {
         this.calculateDirection();
     }
     
+    setupElementalEffects(size, elementConfig) {
+        // Create particle system for elemental effects
+        const particleCount = 20;
+        const particles = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        
+        for (let i = 0; i < particleCount * 3; i += 3) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = size * (1 + Math.random() * 0.3);
+            positions[i] = Math.cos(angle) * radius;
+            positions[i + 1] = Math.random() * size * 2 - size;
+            positions[i + 2] = Math.sin(angle) * radius;
+        }
+        
+        particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        
+        const particleMaterial = new THREE.PointsMaterial({
+            color: elementConfig.particleColor,
+            size: size * 0.2,
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending
+        });
+        
+        this.particles = new THREE.Points(particles, particleMaterial);
+        this.mesh.add(this.particles);
+        
+        // Animate particles
+        this.animateParticles();
+    }
+    
+    animateParticles() {
+        if (!this.particles) return;
+        
+        const positions = this.particles.geometry.attributes.position.array;
+        const particleCount = positions.length / 3;
+        
+        for (let i = 0; i < particleCount * 3; i += 3) {
+            const angle = Math.atan2(positions[i + 2], positions[i]);
+            const radius = Math.sqrt(positions[i] * positions[i] + positions[i + 2] * positions[i + 2]);
+            
+            // Rotate particles
+            const newAngle = angle + 0.02;
+            positions[i] = Math.cos(newAngle) * radius;
+            positions[i + 2] = Math.sin(newAngle) * radius;
+            
+            // Oscillate particles vertically
+            positions[i + 1] += Math.sin(Date.now() * 0.003 + i) * 0.01;
+        }
+        
+        this.particles.geometry.attributes.position.needsUpdate = true;
+        requestAnimationFrame(() => this.animateParticles());
+    }
+    
     calculateDirection() {
         if (this.currentWaypointIndex < this.waypoints.length - 1) {
             const currentWaypoint = this.waypoints[this.currentWaypointIndex];
             const nextWaypoint = this.waypoints[this.currentWaypointIndex + 1];
             
             this.direction.subVectors(nextWaypoint, currentWaypoint).normalize();
+            
+            // If confused, reverse direction
+            if (this.activeEffects.has('confused')) {
+                this.direction.multiplyScalar(-1);
+            }
         }
     }
     
@@ -79,10 +172,18 @@ export class Enemy {
             return;
         }
         
+        // Update status effects
+        this.updateStatusEffects();
+        
         const targetWaypoint = this.waypoints[this.currentWaypointIndex + 1];
         const deltaTime = 0.016; // Approximately 60 FPS
         
-        // Move towards the next waypoint
+        // If stunned, don't move
+        if (this.activeEffects.has('stun')) {
+            return;
+        }
+        
+        // Move towards the next waypoint with current speed (affected by status effects)
         const movement = this.direction.clone().multiplyScalar(this.speed * deltaTime);
         this.mesh.position.add(movement);
         
@@ -92,7 +193,11 @@ export class Enemy {
         if (distanceToTarget < 0.1) {
             // Snap to waypoint and move to next one
             this.mesh.position.copy(targetWaypoint);
-            this.currentWaypointIndex++;
+            
+            // If confused, stay at current waypoint
+            if (!this.activeEffects.has('confused')) {
+                this.currentWaypointIndex++;
+            }
             
             if (this.currentWaypointIndex >= this.waypoints.length - 1) {
                 this.hasReachedEndFlag = true;
@@ -100,16 +205,142 @@ export class Enemy {
                 this.calculateDirection();
             }
         }
+        
+        // Update debug info
+        this.updateDebugInfo();
+    }
+    
+    updateStatusEffects() {
+        const currentTime = Date.now();
+        let speedModifier = 1.0;
+        this.baseDamageMultiplier = 1.0;
+        
+        // Process all active effects
+        for (const [effect, data] of this.activeEffects.entries()) {
+            if (currentTime >= data.endTime) {
+                this.activeEffects.delete(effect);
+                // If confusion ends, recalculate direction
+                if (effect === 'confused') {
+                    this.calculateDirection();
+                }
+                continue;
+            }
+            
+            // Apply effect modifiers
+            switch (effect) {
+                case 'slow':
+                    speedModifier *= 0.7; // 30% slower
+                    break;
+                case 'weaken':
+                    this.baseDamageMultiplier *= 1.25; // Takes 25% more damage
+                    break;
+                case 'burn':
+                    if (currentTime - data.lastTickTime >= 1000) { // Damage every second
+                        this.takeDamage(this.maxHealth * 0.05); // 5% max health as damage
+                        data.lastTickTime = currentTime;
+                    }
+                    break;
+                case 'poison':
+                    if (currentTime - data.lastTickTime >= 500) { // Damage every 0.5 seconds
+                        this.takeDamage(this.maxHealth * 0.03); // 3% max health as damage
+                        data.lastTickTime = currentTime;
+                    }
+                    break;
+                case 'stun':
+                    speedModifier = 0; // Cannot move
+                    break;
+                case 'confused':
+                    // Direction is handled in calculateDirection()
+                    break;
+            }
+        }
+        
+        // Update final speed
+        this.speed = this.baseSpeed * speedModifier;
+    }
+    
+    applyElementalEffect(element, duration) {
+        if (!ELEMENTS[element]) return;
+        
+        const elementConfig = ELEMENTS[element];
+        const effect = elementConfig.baseEffect;
+        
+        // Check if effect should be applied based on chance
+        if (elementConfig.effectChance && Math.random() > elementConfig.effectChance) {
+            return; // Effect didn't trigger
+        }
+        
+        const currentTime = Date.now();
+        
+        // Add or refresh the effect
+        this.activeEffects.set(effect, {
+            endTime: currentTime + duration,
+            lastTickTime: currentTime
+        });
+        
+        // Visual feedback for effect application
+        this.showEffectApplication(elementConfig.color);
+        
+        // If confused, recalculate direction immediately
+        if (effect === 'confused') {
+            this.calculateDirection();
+        }
+    }
+    
+    showEffectApplication(color) {
+        // Create a quick flash effect
+        const flashGeometry = new THREE.SphereGeometry(
+            this.mesh.geometry.parameters.radius * 1.2,
+            8,
+            6
+        );
+        const flashMaterial = new THREE.MeshBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+        this.mesh.add(flash);
+        
+        // Animate the flash
+        const duration = 300; // ms
+        const startTime = Date.now();
+        
+        const animate = () => {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            
+            flash.material.opacity = 0.8 * (1 - progress);
+            flash.scale.setScalar(1 + progress * 0.5);
+            
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                this.mesh.remove(flash);
+            }
+        };
+        
+        animate();
     }
     
     takeDamage(damage) {
-        this.health -= damage;
+        const actualDamage = damage * this.baseDamageMultiplier;
+        this.health -= actualDamage;
         
-        // Visual feedback for damage (flash red)
+        if (this.health < 0) {
+            this.health = 0;
+        }
+
+        // Update debug info after damage
+        this.updateDebugInfo();
+        
+        // Visual feedback for damage
+        const damageColor = this.element ? ELEMENTS[this.element].color : 0xff0000;
         this.mesh.material.color.setHex(0xff0000);
         setTimeout(() => {
             if (this.mesh.material) {
-                this.mesh.material.color.setHex(0xff4444);
+                this.mesh.material.color.setHex(damageColor);
             }
         }, 100);
         
@@ -126,5 +357,23 @@ export class Enemy {
     
     isAlive() {
         return this.health > 0;
+    }
+
+    updateDebugInfo() {
+        if (!this.debugLabel) return;
+        const healthPercent = ((this.health / this.maxHealth) * 100).toFixed(0);
+        let statusEffects = Array.from(this.activeEffects.keys()).join(', ');
+        statusEffects = statusEffects ? ` | Effects: ${statusEffects}` : '';
+        const debugText = `Wave ${this.wave} | HP: ${this.health.toFixed(0)}/${this.maxHealth.toFixed(0)} (${healthPercent}%) | Speed: ${this.speed.toFixed(2)}${statusEffects}`;
+        this.debugLabel.element.textContent = debugText;
+    }
+
+    // Update cleanup when enemy is removed
+    cleanup() {
+        if (this.debugLabel) {
+            this.mesh.remove(this.debugLabel);
+            this.debugLabel.element.remove();
+            this.debugLabel = null;
+        }
     }
 } 
