@@ -132,15 +132,13 @@ export class InputManager {
             gridX,
             0.5,
             gridZ,
-            this.selectedTowerData.id,
-            this.selectedTowerData.element
+            this.selectedTowerData.id
         );
         
         if (tower) {
             this.towers.push(tower);
             this.scene.add(tower.mesh);
             this.gameState.spendMoney(this.selectedTowerData.cost);
-            this.gameState.placeTower();
             
             debugLog('Tower created successfully', 'TOWER_PLACEMENT');
             
@@ -159,8 +157,6 @@ export class InputManager {
             console.error('Failed to create tower');
         }
     }
-
-
 
     onRightClick(event) {
         event.preventDefault();
@@ -248,42 +244,22 @@ export class InputManager {
     createPreviewTower(towerData) {
         debugLog(`Creating preview tower for: ${towerData.name}`, 'TOWER_PLACEMENT');
         
-        // Create a simple preview mesh
-        const geometry = new THREE.CylinderGeometry(0.3, 0.4, 1.0, 8);
-        const material = new THREE.MeshPhongMaterial({ 
-            color: towerData.color,
-            transparent: true,
-            opacity: 0.5
-        });
+        // Create preview tower using the Tower class
+        const tower = new Tower(0, 0.5, 0, towerData.id);
         
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.set(0, 0.5, 0);
-        mesh.castShadow = true;
+        // Make preview tower transparent
+        tower.mesh.material.transparent = true;
+        tower.mesh.material.opacity = 0.5;
+        tower.rangeIndicator.material.transparent = true;
+        tower.rangeIndicator.material.opacity = 0.2;
         
-        // Add range indicator
-        const rangeGeometry = new THREE.RingGeometry(towerData.range - 0.1, towerData.range, 32);
-        const rangeMaterial = new THREE.MeshBasicMaterial({ 
-            color: towerData.color,
-            transparent: true,
-            opacity: 0.2,
-            side: THREE.DoubleSide
-        });
-        
-        const rangeIndicator = new THREE.Mesh(rangeGeometry, rangeMaterial);
-        rangeIndicator.rotation.x = -Math.PI / 2;
-        rangeIndicator.position.y = 0.01;
-        
-        return {
-            mesh: mesh,
-            rangeIndicator: rangeIndicator
-        };
+        return tower;
     }
 
     clearTowerSelection() {
         this.setSelectedTowerData(null);
     }
 
-    // Public API
     setOnTowerPlacedCallback(callback) {
         this.onTowerPlacedCallback = callback;
     }
@@ -296,16 +272,10 @@ export class InputManager {
         return this.selectedTowerData;
     }
 
-    // Clean up method
     destroy() {
         window.removeEventListener('mousemove', this.onMouseMove);
         window.removeEventListener('click', this.onMouseClick);
         window.removeEventListener('contextmenu', this.onRightClick);
         window.removeEventListener('resize', this.onWindowResize);
-        
-        if (this.previewTower) {
-            this.scene.remove(this.previewTower.mesh);
-            this.scene.remove(this.previewTower.rangeIndicator);
-        }
     }
 } 

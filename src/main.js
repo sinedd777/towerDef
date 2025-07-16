@@ -4,8 +4,6 @@ import { Tower } from './Tower.js';
 import { Projectile } from './Projectile.js';
 import { GameState } from './GameState.js';
 import { TOWER_TYPES } from './TowerTypes.js';
-import { ELEMENTS, getElementalDamage, getTowerById, getUpgradeOptions } from './Elements.js';
-import { ElementManager } from './ElementManager.js';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { TowerSelectionUI } from './ui/TowerSelectionUI.js';
 import { InputManager } from './input/InputManager.js';
@@ -38,9 +36,6 @@ document.body.appendChild(renderer.domElement);
 // Game state
 const gameState = new GameState();
 
-// Element Manager - Initialize after gameState
-const elementManager = new ElementManager(gameState, scene);
-
 // UI System initialization
 const towerSelectionUI = new TowerSelectionUI(gameState);
 
@@ -50,7 +45,7 @@ towerSelectionUI.updateBasicTowerGrid(basicTowers);
 
 // Listen for tower updates
 document.addEventListener('towersUpdated', (event) => {
-    towerSelectionUI.updateTowerSelectionUI(event.detail.availableTowers, event.detail.unlockedElements);
+    towerSelectionUI.updateTowerSelectionUI(event.detail.availableTowers);
 });
 
 // Lighting
@@ -119,8 +114,6 @@ towerSelectionUI.setOnTowerSelectedCallback((towerData) => {
 inputManager.setOnTowerMenuUpdateCallback(() => {
     towerSelectionUI.updateTowerMenu();
 });
-
-
 
 // Game loop
 function animate() {
@@ -198,7 +191,6 @@ function animate() {
             if (projectile.splashRadius > 0) {
                 const splashTargets = projectile.getSplashTargets(enemies);
                 for (const splashTarget of splashTargets) {
-                    // Apply splash damage with elemental effects
                     projectile.applyDamage(splashTarget);
                     if (!splashTarget.isAlive()) {
                         const index = enemies.indexOf(splashTarget);
@@ -214,10 +206,9 @@ function animate() {
                 }
             }
             
-            // Handle direct hit with elemental effects
+            // Handle direct hit
             const enemyIndex = enemies.indexOf(projectile.target);
             if (enemyIndex !== -1) {
-                // Apply damage and elemental effects
                 projectile.applyDamage(projectile.target);
                 if (!projectile.target.isAlive()) {
                     projectile.target.cleanup();
@@ -249,12 +240,22 @@ function animate() {
     gameState.updateHUD();
     towerSelectionUI.updateTowerMenu();
     
-    // Render scene and labels
+    // Render scene
     renderer.render(scene, camera);
     if (labelRenderer) {
         labelRenderer.render(scene, camera);
     }
 }
 
-// Start the game
+// Handle window resize
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    if (labelRenderer) {
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+    }
+});
+
+// Start game loop
 animate(); 

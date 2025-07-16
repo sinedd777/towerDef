@@ -4,19 +4,16 @@ export class GameState {
         this.score = 0;
         this.wave = 1;
         this.enemiesCount = 0;
-        this.enemiesKilled = 0;
-        this.towersPlaced = 0;
-        
-        // Element system
-        this.unlockedElements = [];
-        this.elementSelectionPending = false;
-        this.elementSelectionCallback = null;
+        this.maxEnemies = 10;
         
         // DOM element references
         this.moneyElement = document.getElementById('money');
         this.scoreElement = document.getElementById('score');
         this.waveElement = document.getElementById('wave');
         this.enemiesElement = document.getElementById('enemies');
+        
+        // Initialize HUD
+        this.updateHUD();
     }
     
     addMoney(amount) {
@@ -45,82 +42,38 @@ export class GameState {
     
     removeEnemy() {
         this.enemiesCount--;
-        this.enemiesKilled++;
-        this.updateHUD();
-        
-        // Check for wave progression
-        this.checkWaveProgression();
-    }
-    
-    checkWaveProgression() {
-        // Simple wave progression: every 10 enemies killed = new wave
-        if (this.enemiesKilled > 0 && this.enemiesKilled % 10 === 0) {
+        if (this.enemiesCount <= 0) {
             this.wave++;
-            this.addMoney(50); // Bonus money for completing wave
-            this.updateHUD();
-            
-            // Check for element unlock (every 5 waves)
-            this.checkElementUnlock();
+            this.enemiesCount = 0;
+            this.maxEnemies = Math.floor(this.maxEnemies * 1.2); // 20% more enemies each wave
+            this.addMoney(50); // Wave completion bonus
+            this.addScore(500);
         }
+        this.updateHUD();
     }
     
-    checkElementUnlock() {
-        // Element unlock every 5 waves (waves 5, 10, 15, 20, 25, 30)
-        if (this.wave % 5 === 0 && this.unlockedElements.length < 6) {
-            this.triggerElementSelection();
-        }
+    getWave() {
+        return this.wave;
     }
     
-    triggerElementSelection() {
-        this.elementSelectionPending = true;
-        // Trigger element selection UI - this will be handled by the ElementManager
-        if (this.elementSelectionCallback) {
-            this.elementSelectionCallback();
-        }
+    getMoney() {
+        return this.money;
     }
     
-    setElementSelectionCallback(callback) {
-        this.elementSelectionCallback = callback;
+    getScore() {
+        return this.score;
     }
     
-    selectElement(elementId) {
-        if (!this.unlockedElements.includes(elementId)) {
-            this.unlockedElements.push(elementId);
-            this.elementSelectionPending = false;
-            console.log(`Element unlocked: ${elementId}. Total elements: ${this.unlockedElements.length}`);
-            return true;
-        }
-        return false;
+    getEnemiesCount() {
+        return this.enemiesCount;
     }
     
-    hasElement(elementId) {
-        return this.unlockedElements.includes(elementId);
+    getMaxEnemies() {
+        return this.maxEnemies;
     }
     
-    getUnlockedElements() {
-        return [...this.unlockedElements];
-    }
-    
-    isElementSelectionPending() {
-        return this.elementSelectionPending;
-    }
-    
-    // Helper method to check if player can build specific tower types
-    canBuildTowerTier(tier) {
-        switch (tier) {
-            case 1: // Single element towers
-                return this.unlockedElements.length >= 1;
-            case 2: // Dual element towers
-                return this.unlockedElements.length >= 2;
-            case 3: // Triple element towers
-                return this.unlockedElements.length >= 3;
-            default:
-                return false;
-        }
-    }
-    
-    placeTower() {
-        this.towersPlaced++;
+    canAfford(cost) {
+        return this.money >= cost;
     }
     
     updateHUD() {
@@ -130,37 +83,30 @@ export class GameState {
         if (this.enemiesElement) this.enemiesElement.textContent = this.enemiesCount;
     }
     
-    // Getters
-    getMoney() {
-        return this.money;
-    }
-    
-    getScore() {
-        return this.score;
-    }
-    
-    getWave() {
-        return this.wave;
-    }
-    
-    getEnemiesCount() {
-        return this.enemiesCount;
-    }
-    
-    canAfford(cost) {
-        return this.money >= cost;
-    }
-    
-    getGameStats() {
-        return {
+    // Save game state
+    save() {
+        const saveData = {
             money: this.money,
             score: this.score,
             wave: this.wave,
-            enemiesAlive: this.enemiesCount,
-            enemiesKilled: this.enemiesKilled,
-            towersPlaced: this.towersPlaced,
-            unlockedElements: this.unlockedElements,
-            elementSelectionPending: this.elementSelectionPending
+            enemiesCount: this.enemiesCount,
+            maxEnemies: this.maxEnemies
         };
+        
+        localStorage.setItem('towerDefenseGameState', JSON.stringify(saveData));
+    }
+    
+    // Load game state
+    load() {
+        const savedData = localStorage.getItem('towerDefenseGameState');
+        if (savedData) {
+            const data = JSON.parse(savedData);
+            this.money = data.money;
+            this.score = data.score;
+            this.wave = data.wave;
+            this.enemiesCount = data.enemiesCount;
+            this.maxEnemies = data.maxEnemies;
+            this.updateHUD();
+        }
     }
 } 

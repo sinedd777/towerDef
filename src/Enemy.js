@@ -1,13 +1,11 @@
 import * as THREE from 'three';
-import { ELEMENTS } from './Elements.js';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 
 export class Enemy {
-    constructor(waypoints, wave = 1, element = null) {
+    constructor(waypoints, wave = 1) {
         this.waypoints = waypoints;
         this.currentWaypointIndex = 0;
-        this.element = element;
-        this.wave = wave; // Store wave number first
+        this.wave = wave;
         
         // Enhanced scaling based on wave number
         const baseSpeed = 1.0;
@@ -18,7 +16,7 @@ export class Enemy {
         const healthMultiplier = Math.pow(1.25, wave - 1); // Exponential health scaling
         
         this.speed = baseSpeed * speedMultiplier;
-        this.baseSpeed = this.speed; // Store base speed for status effects
+        this.baseSpeed = this.speed;
         this.health = baseHealth * healthMultiplier;
         this.maxHealth = this.health;
         
@@ -35,38 +33,27 @@ export class Enemy {
         const size = 0.3 * sizeMultiplier;
         
         const geometry = new THREE.SphereGeometry(size, 8, 6);
-        
-        // Enhanced visual appearance with elemental colors
-        const elementConfig = element ? ELEMENTS[element] : null;
-        const baseColor = elementConfig ? elementConfig.color : 0xff4444;
-        const emissiveIntensity = Math.min(0.5, 0.1 * (wave - 1));
-        
         const material = new THREE.MeshPhongMaterial({ 
-            color: baseColor,
-            emissive: elementConfig ? new THREE.Color(elementConfig.color) : new THREE.Color(0xff0000),
-            emissiveIntensity: emissiveIntensity,
+            color: 0xff4444,
+            emissive: new THREE.Color(0xff0000),
+            emissiveIntensity: Math.min(0.5, 0.1 * (wave - 1)),
             shininess: Math.min(100, wave * 10)
         });
         
         this.mesh = new THREE.Mesh(geometry, material);
         this.mesh.castShadow = true;
         
-        // Add wave and elemental indicator effects
-        if (wave > 1 || element) {
+        // Add wave indicator effects
+        if (wave > 1) {
             const ringGeometry = new THREE.RingGeometry(size * 1.2, size * 1.4, 16);
             const ringMaterial = new THREE.MeshBasicMaterial({ 
-                color: elementConfig ? elementConfig.color : 0xff0000,
+                color: 0xff0000,
                 transparent: true,
                 opacity: 0.3 + Math.min(0.5, (wave - 1) * 0.1)
             });
             const ring = new THREE.Mesh(ringGeometry, ringMaterial);
             ring.rotation.x = -Math.PI / 2;
             this.mesh.add(ring);
-            
-            // Add elemental particle effects
-            if (element) {
-                this.setupElementalEffects(size, elementConfig);
-            }
         }
 
         // Create debug label
@@ -80,9 +67,8 @@ export class Enemy {
         debugDiv.style.pointerEvents = 'none';
         debugDiv.style.whiteSpace = 'nowrap';
         this.debugLabel = new CSS2DObject(debugDiv);
-        this.debugLabel.position.set(0, 1, 0); // Position above the enemy
+        this.debugLabel.position.set(0, 1, 0);
 
-        // Add debug label to mesh after it's created
         this.mesh.add(this.debugLabel);
         
         // Update debug info initially
@@ -97,60 +83,6 @@ export class Enemy {
         this.hasReachedEndFlag = false;
         
         this.calculateDirection();
-    }
-    
-    setupElementalEffects(size, elementConfig) {
-        // Create particle system for elemental effects
-        const particleCount = 20;
-        const particles = new THREE.BufferGeometry();
-        const positions = new Float32Array(particleCount * 3);
-        
-        for (let i = 0; i < particleCount * 3; i += 3) {
-            const angle = Math.random() * Math.PI * 2;
-            const radius = size * (1 + Math.random() * 0.3);
-            positions[i] = Math.cos(angle) * radius;
-            positions[i + 1] = Math.random() * size * 2 - size;
-            positions[i + 2] = Math.sin(angle) * radius;
-        }
-        
-        particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        
-        const particleMaterial = new THREE.PointsMaterial({
-            color: elementConfig.particleColor,
-            size: size * 0.2,
-            transparent: true,
-            opacity: 0.6,
-            blending: THREE.AdditiveBlending
-        });
-        
-        this.particles = new THREE.Points(particles, particleMaterial);
-        this.mesh.add(this.particles);
-        
-        // Animate particles
-        this.animateParticles();
-    }
-    
-    animateParticles() {
-        if (!this.particles) return;
-        
-        const positions = this.particles.geometry.attributes.position.array;
-        const particleCount = positions.length / 3;
-        
-        for (let i = 0; i < particleCount * 3; i += 3) {
-            const angle = Math.atan2(positions[i + 2], positions[i]);
-            const radius = Math.sqrt(positions[i] * positions[i] + positions[i + 2] * positions[i + 2]);
-            
-            // Rotate particles
-            const newAngle = angle + 0.02;
-            positions[i] = Math.cos(newAngle) * radius;
-            positions[i + 2] = Math.sin(newAngle) * radius;
-            
-            // Oscillate particles vertically
-            positions[i + 1] += Math.sin(Date.now() * 0.003 + i) * 0.01;
-        }
-        
-        this.particles.geometry.attributes.position.needsUpdate = true;
-        requestAnimationFrame(() => this.animateParticles());
     }
     
     calculateDirection() {
@@ -234,18 +166,6 @@ export class Enemy {
                 case 'weaken':
                     this.baseDamageMultiplier *= 1.25; // Takes 25% more damage
                     break;
-                case 'burn':
-                    if (currentTime - data.lastTickTime >= 1000) { // Damage every second
-                        this.takeDamage(this.maxHealth * 0.05); // 5% max health as damage
-                        data.lastTickTime = currentTime;
-                    }
-                    break;
-                case 'poison':
-                    if (currentTime - data.lastTickTime >= 500) { // Damage every 0.5 seconds
-                        this.takeDamage(this.maxHealth * 0.03); // 3% max health as damage
-                        data.lastTickTime = currentTime;
-                    }
-                    break;
                 case 'stun':
                     speedModifier = 0; // Cannot move
                     break;
@@ -259,51 +179,32 @@ export class Enemy {
         this.speed = this.baseSpeed * speedModifier;
     }
     
-    applyElementalEffect(element, duration) {
-        if (!element || !ELEMENTS[element]) return;
-        
+    applyEffect(effectType, duration) {
         const currentTime = Date.now();
-        const elementConfig = ELEMENTS[element];
         
-        // Define effect based on element type
+        // Define effect
         let effect = {
             endTime: currentTime + duration,
-            lastTickTime: currentTime,
-            element: element
+            lastTickTime: currentTime
         };
         
-        switch (element) {
-            case 'FIRE':
-                this.activeEffects.set('burn', effect);
-                break;
-            case 'WATER':
-                this.activeEffects.set('slow', effect);
-                break;
-            case 'NATURE':
-                this.activeEffects.set('poison', effect);
-                break;
-            case 'LIGHT':
-                this.activeEffects.set('weaken', effect);
-                break;
-            case 'DARKNESS':
-                this.activeEffects.set('confused', effect);
-                break;
-            case 'EARTH':
-                this.activeEffects.set('stun', {
-                    ...effect,
-                    endTime: currentTime + (duration * 0.5) // Stun duration is halved for balance
-                });
+        switch (effectType) {
+            case 'slow':
+            case 'weaken':
+            case 'stun':
+            case 'confused':
+                this.activeEffects.set(effectType, effect);
                 break;
         }
         
         // Show visual effect
-        this.showEffectApplication(elementConfig.color);
+        this.showEffectApplication();
         
         // Update debug info
         this.updateDebugInfo();
     }
     
-    showEffectApplication(color) {
+    showEffectApplication() {
         // Create a quick flash effect
         const flashGeometry = new THREE.SphereGeometry(
             this.mesh.geometry.parameters.radius * 1.2,
@@ -311,7 +212,7 @@ export class Enemy {
             6
         );
         const flashMaterial = new THREE.MeshBasicMaterial({
-            color: color,
+            color: 0xffffff,
             transparent: true,
             opacity: 0.8
         });
@@ -352,11 +253,10 @@ export class Enemy {
         this.updateDebugInfo();
         
         // Visual feedback for damage
-        const damageColor = this.element ? ELEMENTS[this.element].color : 0xff0000;
         this.mesh.material.color.setHex(0xff0000);
         setTimeout(() => {
             if (this.mesh.material) {
-                this.mesh.material.color.setHex(damageColor);
+                this.mesh.material.color.setHex(0xff4444);
             }
         }, 100);
         
@@ -380,14 +280,11 @@ export class Enemy {
         
         const healthPercent = Math.round((this.health / this.maxHealth) * 100);
         let statusEffects = Array.from(this.activeEffects.keys()).join(', ');
-        
-        let elementText = this.element ? `Element: ${this.element}` : '';
         let effectsText = statusEffects ? `Effects: ${statusEffects}` : '';
         
         this.debugLabel.element.innerHTML = `
             Wave ${this.wave}<br>
             HP: ${healthPercent}%<br>
-            ${elementText}<br>
             ${effectsText}
         `;
         
@@ -410,21 +307,12 @@ export class Enemy {
         this.debugLabel.element.style.textAlign = 'center';
     }
 
-    // Update cleanup when enemy is removed
     cleanup() {
         // Remove debug label
         if (this.debugLabel) {
             this.mesh.remove(this.debugLabel);
             this.debugLabel.element.remove();
             this.debugLabel = null;
-        }
-        
-        // Remove particle effects
-        if (this.particles) {
-            this.mesh.remove(this.particles);
-            this.particles.geometry.dispose();
-            this.particles.material.dispose();
-            this.particles = null;
         }
         
         // Remove any child meshes (like rings or effects)

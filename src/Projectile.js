@@ -1,33 +1,23 @@
 import * as THREE from 'three';
-import { ELEMENTS, getElementalDamage } from './Elements.js';
 
 export class Projectile {
-    constructor(startPosition, target, damage, splashRadius = 0, element = null) {
+    constructor(startPosition, target, damage, splashRadius = 0) {
         this.target = target;
         this.damage = damage;
         this.splashRadius = splashRadius;
-        this.element = element;
         this.speed = 8.0; // units per second
         this.maxDistance = 15.0; // Maximum travel distance before removal
         this.traveledDistance = 0;
         
-        // Get element configuration if available
-        const elementConfig = element ? ELEMENTS[element] : null;
-        
-        // Create projectile mesh with elemental properties
+        // Create projectile mesh
         const geometry = new THREE.SphereGeometry(0.1, 6, 4);
         const material = new THREE.MeshBasicMaterial({ 
-            color: elementConfig ? elementConfig.particleColor : (this.splashRadius > 0 ? 0xff00ff : 0xffff00),
+            color: this.splashRadius > 0 ? 0xff00ff : 0xffff00,
             transparent: true,
             opacity: 0.8
         });
         this.mesh = new THREE.Mesh(geometry, material);
         this.mesh.position.copy(startPosition);
-        
-        // Add trail effect for elemental projectiles
-        if (elementConfig) {
-            this.setupTrailEffect(elementConfig);
-        }
         
         // Store starting position for distance calculation
         this.startPosition = startPosition.clone();
@@ -39,17 +29,20 @@ export class Projectile {
         // Trail points for particle effect
         this.trailPoints = [];
         this.maxTrailPoints = 10;
+        
+        // Setup trail effect
+        this.setupTrailEffect();
     }
     
-    setupTrailEffect(elementConfig) {
+    setupTrailEffect() {
         // Create trail geometry
         const trailGeometry = new THREE.BufferGeometry();
         const trailPositions = new Float32Array(this.maxTrailPoints * 3);
         trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
         
-        // Create trail material with element color
+        // Create trail material
         const trailMaterial = new THREE.LineBasicMaterial({
-            color: elementConfig.color,
+            color: this.splashRadius > 0 ? 0xff00ff : 0xffff00,
             transparent: true,
             opacity: 0.5,
             blending: THREE.AdditiveBlending
@@ -135,7 +128,6 @@ export class Projectile {
         return this.mesh.position;
     }
     
-    // Handle splash damage with elemental effects
     getSplashTargets(enemies) {
         if (this.splashRadius <= 0) return [];
         
@@ -147,30 +139,16 @@ export class Projectile {
         });
     }
     
-    // Apply damage with elemental effects
     applyDamage(enemy) {
         if (!enemy.isAlive()) return 0;
-        
-        let finalDamage = this.damage;
-        
-        // Apply elemental damage if projectile has an element
-        if (this.element && ELEMENTS[this.element]) {
-            finalDamage = getElementalDamage(this.damage, this.element, enemy.element);
-            enemy.applyElementalEffect(this.element, ELEMENTS[this.element].effectDuration);
-        }
-        
-        enemy.takeDamage(finalDamage);
-        return finalDamage;
+        enemy.takeDamage(this.damage);
+        return this.damage;
     }
     
-    // Create impact effect when projectile hits
     createImpactEffect() {
-        if (!this.element) return null;
-        
-        const elementConfig = ELEMENTS[this.element];
         const impactGeometry = new THREE.SphereGeometry(0.3, 8, 8);
         const impactMaterial = new THREE.MeshBasicMaterial({
-            color: elementConfig.color,
+            color: this.splashRadius > 0 ? 0xff00ff : 0xffff00,
             transparent: true,
             opacity: 0.8,
             blending: THREE.AdditiveBlending

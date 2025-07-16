@@ -41,6 +41,7 @@
         .tower-menu {
             position: fixed;
             bottom: 20px;
+            right: 20px;
             z-index: 2;
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -49,14 +50,6 @@
             background: rgba(0, 0, 0, 0.7);
             border-radius: 10px;
             border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        #basic-tower-menu {
-            right: 20px;
-        }
-
-        #elemental-tower-menu {
-            left: 20px;
         }
 
         .tower-slot {
@@ -170,11 +163,7 @@
     </div>
 
     <div id="basic-tower-menu" class="tower-menu">
-        <!-- Basic towers will be added here dynamically -->
-    </div>
-
-    <div id="elemental-tower-menu" class="tower-menu">
-        <!-- Elemental towers will be added here dynamically -->
+        <!-- Towers will be added here dynamically -->
     </div>
 
     <script type="module" src="/src/main.js"></script>

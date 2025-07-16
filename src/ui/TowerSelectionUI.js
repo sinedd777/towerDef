@@ -1,4 +1,3 @@
-import { getTowerById } from '../Elements.js';
 import { debugLog } from '../config/DebugConfig.js';
 
 export class TowerSelectionUI {
@@ -102,26 +101,16 @@ export class TowerSelectionUI {
 
     createTowerSelectionUI() {
         const basicTowerMenu = document.getElementById('basic-tower-menu');
-        const elementalTowerMenu = document.getElementById('elemental-tower-menu');
         
-        if (!basicTowerMenu || !elementalTowerMenu) {
-            console.error('Tower menus not found in HTML');
+        if (!basicTowerMenu) {
+            console.error('Tower menu not found in HTML');
             return;
         }
-
-        // Initialize with empty elemental towers
-        this.updateElementalTowerGrid([]);
     }
 
-    updateTowerSelectionUI(availableTowers, unlockedElements) {
+    updateTowerSelectionUI(availableTowers) {
         debugLog(`Updating tower selection UI with ${availableTowers.length} towers`, 'UI_INTERACTIONS');
-        
-        // Split towers into basic and elemental
-        const basicTowers = availableTowers.filter(t => !t.elements || t.elements.length === 0);
-        const elementalTowers = availableTowers.filter(t => t.elements && t.elements.length > 0);
-        
-        this.updateBasicTowerGrid(basicTowers);
-        this.updateElementalTowerGrid(elementalTowers);
+        this.updateBasicTowerGrid(availableTowers);
     }
 
     updateBasicTowerGrid(basicTowers) {
@@ -131,32 +120,6 @@ export class TowerSelectionUI {
         menu.innerHTML = '';
         
         basicTowers.forEach(tower => {
-            const slot = this.createTowerSlot(tower);
-            menu.appendChild(slot);
-        });
-    }
-
-    updateElementalTowerGrid(elementalTowers) {
-        const menu = document.getElementById('elemental-tower-menu');
-        if (!menu) return;
-        
-        menu.innerHTML = '';
-        
-        if (elementalTowers.length === 0) {
-            const message = document.createElement('div');
-            message.style.cssText = `
-                grid-column: 1 / -1;
-                color: #888;
-                text-align: center;
-                padding: 20px;
-                font-style: italic;
-            `;
-            message.textContent = 'Reach wave 5 to unlock your first element!';
-            menu.appendChild(message);
-            return;
-        }
-        
-        elementalTowers.forEach(tower => {
             const slot = this.createTowerSlot(tower);
             menu.appendChild(slot);
         });
@@ -215,7 +178,6 @@ export class TowerSelectionUI {
             <div>Range: ${tower.range}</div>
             <div>Damage: ${tower.damage}</div>
             <div>Rate: ${tower.fireRate}/s</div>
-            ${tower.element ? `<div>Element: ${tower.element}</div>` : ''}
         `;
         
         tooltip.appendChild(tooltipHeader);
@@ -248,34 +210,27 @@ export class TowerSelectionUI {
     }
 
     selectTower(slot, tower) {
-        // Deselect any previously selected tower
         this.deselectAllTowers();
-        
-        // Select this tower
         slot.classList.add('selected');
-        this.selectedTowerData = { ...tower }; // Create a copy of the tower data
-        debugLog(`Selected tower data: ${JSON.stringify(this.selectedTowerData)}`, 'UI_INTERACTIONS');
+        this.selectedTowerData = tower;
         
-        // Notify callback
         if (this.onTowerSelectedCallback) {
-            this.onTowerSelectedCallback(this.selectedTowerData);
+            this.onTowerSelectedCallback(tower);
         }
     }
 
     deselectTower(slot) {
-        this.selectedTowerData = null;
         slot.classList.remove('selected');
+        this.selectedTowerData = null;
         
-        // Notify callback
         if (this.onTowerSelectedCallback) {
             this.onTowerSelectedCallback(null);
         }
     }
 
     deselectAllTowers() {
-        document.querySelectorAll('.tower-slot.selected').forEach(slot => {
-            slot.classList.remove('selected');
-        });
+        const slots = document.querySelectorAll('.tower-slot');
+        slots.forEach(slot => slot.classList.remove('selected'));
         this.selectedTowerData = null;
     }
 
@@ -288,19 +243,16 @@ export class TowerSelectionUI {
     }
 
     updateTowerMenu() {
-        const money = this.gameState.getMoney();
-        document.querySelectorAll('.tower-slot').forEach(slot => {
+        const slots = document.querySelectorAll('.tower-slot');
+        slots.forEach(slot => {
             const towerId = slot.dataset.towerId;
-            const towerData = getTowerById(towerId);
-            if (!towerData) {
-                console.warn(`No tower data found for id: ${towerId}`);
-                return;
+            const tower = this.selectedTowerData;
+            if (tower && tower.id === towerId) {
+                this.updateSlotAffordability(slot, tower);
             }
-            this.updateSlotAffordability(slot, towerData);
         });
     }
 
-    // Public API
     setOnTowerSelectedCallback(callback) {
         this.onTowerSelectedCallback = callback;
     }
@@ -311,8 +263,5 @@ export class TowerSelectionUI {
 
     clearSelection() {
         this.deselectAllTowers();
-        if (this.onTowerSelectedCallback) {
-            this.onTowerSelectedCallback(null);
-        }
     }
 } 
