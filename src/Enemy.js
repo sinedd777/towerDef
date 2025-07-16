@@ -14,7 +14,7 @@ export class Enemy {
         const baseHealth = 100;
         
         // Exponential scaling for higher waves
-        const speedMultiplier = 1 + (wave - 1) * 0.20; // +20% speed per wave
+        const speedMultiplier = 1 + (wave - 1) * 0.10; // +10% speed per wave
         const healthMultiplier = Math.pow(1.25, wave - 1); // Exponential health scaling
         
         this.speed = baseSpeed * speedMultiplier;

@@ -114,9 +114,6 @@ const inputManager = new InputManager(scene, camera, renderer, gameState, ground
 // Setup system callbacks
 towerSelectionUI.setOnTowerSelectedCallback((towerData) => {
     inputManager.setSelectedTowerData(towerData);
-    if (!towerData) {
-        towerSelectionUI.clearSelection();
-    }
 });
 
 inputManager.setOnTowerMenuUpdateCallback(() => {
