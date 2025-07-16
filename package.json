@@ -1,0 +1,26 @@
+{
+  "name": "three-tower-defense",
+  "version": "1.0.0",
+  "description": "A simple tower defense game built with Three.js",
+  "main": "src/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.158.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  },
+  "keywords": [
+    "threejs",
+    "tower-defense",
+    "game",
+    "javascript"
+  ],
+  "author": "",
+  "license": "MIT"
+} 
