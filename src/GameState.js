@@ -7,6 +7,11 @@ export class GameState {
         this.enemiesKilled = 0;
         this.towersPlaced = 0;
         
+        // Element system
+        this.unlockedElements = [];
+        this.elementSelectionPending = false;
+        this.elementSelectionCallback = null;
+        
         // DOM element references
         this.moneyElement = document.getElementById('money');
         this.scoreElement = document.getElementById('score');
@@ -53,6 +58,64 @@ export class GameState {
             this.wave++;
             this.addMoney(50); // Bonus money for completing wave
             this.updateHUD();
+            
+            // Check for element unlock (every 5 waves)
+            this.checkElementUnlock();
+        }
+    }
+    
+    checkElementUnlock() {
+        // Element unlock every 5 waves (waves 5, 10, 15, 20, 25, 30)
+        if (this.wave % 5 === 0 && this.unlockedElements.length < 6) {
+            this.triggerElementSelection();
+        }
+    }
+    
+    triggerElementSelection() {
+        this.elementSelectionPending = true;
+        // Trigger element selection UI - this will be handled by the ElementManager
+        if (this.elementSelectionCallback) {
+            this.elementSelectionCallback();
+        }
+    }
+    
+    setElementSelectionCallback(callback) {
+        this.elementSelectionCallback = callback;
+    }
+    
+    selectElement(elementId) {
+        if (!this.unlockedElements.includes(elementId)) {
+            this.unlockedElements.push(elementId);
+            this.elementSelectionPending = false;
+            console.log(`Element unlocked: ${elementId}. Total elements: ${this.unlockedElements.length}`);
+            return true;
+        }
+        return false;
+    }
+    
+    hasElement(elementId) {
+        return this.unlockedElements.includes(elementId);
+    }
+    
+    getUnlockedElements() {
+        return [...this.unlockedElements];
+    }
+    
+    isElementSelectionPending() {
+        return this.elementSelectionPending;
+    }
+    
+    // Helper method to check if player can build specific tower types
+    canBuildTowerTier(tier) {
+        switch (tier) {
+            case 1: // Single element towers
+                return this.unlockedElements.length >= 1;
+            case 2: // Dual element towers
+                return this.unlockedElements.length >= 2;
+            case 3: // Triple element towers
+                return this.unlockedElements.length >= 3;
+            default:
+                return false;
         }
     }
     
@@ -95,7 +158,9 @@ export class GameState {
             wave: this.wave,
             enemiesAlive: this.enemiesCount,
             enemiesKilled: this.enemiesKilled,
-            towersPlaced: this.towersPlaced
+            towersPlaced: this.towersPlaced,
+            unlockedElements: this.unlockedElements,
+            elementSelectionPending: this.elementSelectionPending
         };
     }
 } 

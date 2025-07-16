@@ -19,7 +19,12 @@
         
         canvas {
             display: block;
-            cursor: crosshair;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
         }
         
         #hud {
@@ -28,92 +33,131 @@
             left: 20px;
             color: white;
             font-size: 18px;
-            font-weight: bold;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
-            z-index: 100;
+            z-index: 2;
+            text-shadow: 2px 2px 2px rgba(0,0,0,0.5);
         }
-        
-        #hud div {
-            margin-bottom: 10px;
-        }
-        
-        #instructions {
-            position: absolute;
+
+        /* Tower Menu Styles */
+        .tower-menu {
+            position: fixed;
             bottom: 20px;
-            left: 20px;
-            color: white;
-            font-size: 14px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
-            z-index: 100;
-        }
-
-        #tower-menu {
-            position: absolute;
-            right: 20px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: rgba(0, 0, 0, 0.8);
-            padding: 15px;
+            z-index: 2;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.7);
             border-radius: 10px;
-            z-index: 100;
-            width: 180px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .tower-item {
-            background: rgba(255, 255, 255, 0.1);
+        #basic-tower-menu {
+            right: 20px;
+        }
+
+        #elemental-tower-menu {
+            left: 20px;
+        }
+
+        .tower-slot {
+            width: 60px;
+            height: 60px;
+            background: rgba(40, 40, 40, 0.8);
             border: 2px solid rgba(255, 255, 255, 0.2);
             border-radius: 8px;
-            padding: 10px;
-            margin-bottom: 10px;
-            color: white;
-            cursor: grab;
+            cursor: pointer;
+            position: relative;
             transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        .tower-item:hover {
-            background: rgba(255, 255, 255, 0.2);
-            transform: translateX(-5px);
+        .tower-slot:hover {
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: translateY(-2px);
         }
 
-        .tower-item.dragging {
-            cursor: grabbing;
-            opacity: 0.7;
+        .tower-slot.selected {
+            border-color: #ffdd44;
+            box-shadow: 0 0 10px rgba(255, 221, 68, 0.5);
+            transform: translateY(-2px);
         }
 
-        .tower-item h3 {
-            margin: 0 0 5px 0;
-            font-size: 16px;
+        .tower-slot.cannot-afford {
+            opacity: 0.5;
+            cursor: not-allowed;
+            filter: grayscale(1);
         }
 
-        .tower-item .cost {
-            color: #ffd700;
-            font-weight: bold;
+        .tower-icon {
+            width: 40px;
+            height: 40px;
+            position: relative;
         }
 
-        .tower-item .stats {
+        .tower-cost {
+            position: absolute;
+            bottom: -5px;
+            right: -5px;
+            background: rgba(0, 0, 0, 0.8);
+            color: gold;
+            padding: 2px 4px;
+            border-radius: 4px;
             font-size: 12px;
-            margin-top: 5px;
+            border: 1px solid rgba(255, 215, 0, 0.3);
+        }
+
+        .tower-tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            width: 200px;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s ease;
+            pointer-events: none;
+            margin-bottom: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .tower-slot:hover .tower-tooltip {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .tower-tooltip-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .tower-tooltip-name {
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .tower-tooltip-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 4px;
+            margin-top: 4px;
+            font-size: 11px;
             color: #aaa;
         }
 
-        .tower-item.cannot-afford {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        #tower-preview {
-            position: absolute;
-            pointer-events: none;
-            z-index: 1000;
-            display: none;
-        }
-
-        .valid-placement {
-            filter: drop-shadow(0 0 10px #00ff00);
-        }
-
-        .invalid-placement {
-            filter: drop-shadow(0 0 10px #ff0000);
+        .tower-tooltip-description {
+            margin: 4px 0;
+            color: #ccc;
+            font-style: italic;
         }
     </style>
 </head>
@@ -124,36 +168,15 @@
         <div>Enemies: <span id="enemies">0</span></div>
         <div>Score: <span id="score">0</span></div>
     </div>
-    
-    <div id="tower-menu">
-        <div class="tower-item" data-tower="basic">
-            <h3>Basic Tower</h3>
-            <div class="cost">$20</div>
-            <div class="stats">Range: Med | Damage: Med</div>
-        </div>
-        <div class="tower-item" data-tower="sniper">
-            <h3>Sniper Tower</h3>
-            <div class="cost">$40</div>
-            <div class="stats">Range: High | Damage: High</div>
-        </div>
-        <div class="tower-item" data-tower="rapid">
-            <h3>Rapid Tower</h3>
-            <div class="cost">$30</div>
-            <div class="stats">Range: Low | Fire Rate: High</div>
-        </div>
-        <div class="tower-item" data-tower="area">
-            <h3>Area Tower</h3>
-            <div class="cost">$35</div>
-            <div class="stats">Range: Med | Splash Damage</div>
-        </div>
+
+    <div id="basic-tower-menu" class="tower-menu">
+        <!-- Basic towers will be added here dynamically -->
     </div>
 
-    <div id="tower-preview"></div>
-    
-    <div id="instructions">
-        Drag towers from the menu to place them | Right-click to cancel placement
+    <div id="elemental-tower-menu" class="tower-menu">
+        <!-- Elemental towers will be added here dynamically -->
     </div>
-    
+
     <script type="module" src="/src/main.js"></script>
 </body>
 </html> 

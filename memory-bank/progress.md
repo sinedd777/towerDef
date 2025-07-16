@@ -59,6 +59,16 @@
 - [ ] Special abilities
 - [ ] Power-ups
 
+### Elemental System
+- [ ] Base element implementation
+- [ ] Element selection UI
+- [ ] Single element towers
+- [ ] Elemental boss system
+- [ ] Dual element combinations
+- [ ] Triple element combinations
+- [ ] Element effectiveness system
+- [ ] Boss wave mechanics
+
 ## Known Issues 🐛
 
 ### Performance
@@ -78,16 +88,20 @@
 ## Next Milestone Goals 🎯
 
 ### Short Term
-1. Implement basic sound effects
-2. Add particle effects system
-3. Create tower upgrade system
+1. Implement base element system
+2. Create single element towers
+3. Add elemental boss mechanics
+4. Implement basic sound effects
+5. Add particle effects system
 
 ### Medium Term
-1. Design and implement new enemy types
-2. Add special abilities for towers
-3. Create save/load system
+1. Implement dual element combinations
+2. Design and implement new enemy types
+3. Add special abilities for towers
+4. Create save/load system
 
 ### Long Term
-1. Develop campaign mode
-2. Implement achievement system
-3. Add multiplayer support 
+1. Implement triple element combinations
+2. Develop campaign mode
+3. Implement achievement system
+4. Add multiplayer support 

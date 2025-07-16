@@ -37,6 +37,8 @@ npm run preview
 - Three.js: 3D graphics library
 - Core game logic in vanilla JavaScript
 - ES6 modules for code organization
+- Particle system for elemental effects
+- State management for element combinations
 
 ### Development Dependencies
 - Vite: Build tool and dev server
@@ -55,12 +57,18 @@ npm run preview
 - Efficient collision detection
 - Optimized 3D rendering
 - Memory management for game objects
+- Particle system optimization
+- Element combination calculations
+- Boss wave performance handling
 
 ### Code Standards
 - ES6+ JavaScript
 - Modular architecture
 - Clear documentation
 - Consistent code style
+- Type safety for element combinations
+- Event-driven element system
+- Extensible tower upgrade paths
 
 ## Development Workflow
 

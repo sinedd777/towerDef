@@ -260,31 +260,47 @@ export class Enemy {
     }
     
     applyElementalEffect(element, duration) {
-        if (!ELEMENTS[element]) return;
-        
-        const elementConfig = ELEMENTS[element];
-        const effect = elementConfig.baseEffect;
-        
-        // Check if effect should be applied based on chance
-        if (elementConfig.effectChance && Math.random() > elementConfig.effectChance) {
-            return; // Effect didn't trigger
-        }
+        if (!element || !ELEMENTS[element]) return;
         
         const currentTime = Date.now();
+        const elementConfig = ELEMENTS[element];
         
-        // Add or refresh the effect
-        this.activeEffects.set(effect, {
+        // Define effect based on element type
+        let effect = {
             endTime: currentTime + duration,
-            lastTickTime: currentTime
-        });
+            lastTickTime: currentTime,
+            element: element
+        };
         
-        // Visual feedback for effect application
+        switch (element) {
+            case 'FIRE':
+                this.activeEffects.set('burn', effect);
+                break;
+            case 'WATER':
+                this.activeEffects.set('slow', effect);
+                break;
+            case 'NATURE':
+                this.activeEffects.set('poison', effect);
+                break;
+            case 'LIGHT':
+                this.activeEffects.set('weaken', effect);
+                break;
+            case 'DARKNESS':
+                this.activeEffects.set('confused', effect);
+                break;
+            case 'EARTH':
+                this.activeEffects.set('stun', {
+                    ...effect,
+                    endTime: currentTime + (duration * 0.5) // Stun duration is halved for balance
+                });
+                break;
+        }
+        
+        // Show visual effect
         this.showEffectApplication(elementConfig.color);
         
-        // If confused, recalculate direction immediately
-        if (effect === 'confused') {
-            this.calculateDirection();
-        }
+        // Update debug info
+        this.updateDebugInfo();
     }
     
     showEffectApplication(color) {
@@ -361,19 +377,65 @@ export class Enemy {
 
     updateDebugInfo() {
         if (!this.debugLabel) return;
-        const healthPercent = ((this.health / this.maxHealth) * 100).toFixed(0);
+        
+        const healthPercent = Math.round((this.health / this.maxHealth) * 100);
         let statusEffects = Array.from(this.activeEffects.keys()).join(', ');
-        statusEffects = statusEffects ? ` | Effects: ${statusEffects}` : '';
-        const debugText = `Wave ${this.wave} | HP: ${this.health.toFixed(0)}/${this.maxHealth.toFixed(0)} (${healthPercent}%) | Speed: ${this.speed.toFixed(2)}${statusEffects}`;
-        this.debugLabel.element.textContent = debugText;
+        
+        let elementText = this.element ? `Element: ${this.element}` : '';
+        let effectsText = statusEffects ? `Effects: ${statusEffects}` : '';
+        
+        this.debugLabel.element.innerHTML = `
+            Wave ${this.wave}<br>
+            HP: ${healthPercent}%<br>
+            ${elementText}<br>
+            ${effectsText}
+        `;
+        
+        // Color code the health based on percentage
+        let healthColor;
+        if (healthPercent > 66) {
+            healthColor = '#00ff00';
+        } else if (healthPercent > 33) {
+            healthColor = '#ffff00';
+        } else {
+            healthColor = '#ff0000';
+        }
+        
+        // Update label style
+        this.debugLabel.element.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        this.debugLabel.element.style.color = healthColor;
+        this.debugLabel.element.style.padding = '4px';
+        this.debugLabel.element.style.borderRadius = '4px';
+        this.debugLabel.element.style.fontSize = '12px';
+        this.debugLabel.element.style.textAlign = 'center';
     }
 
     // Update cleanup when enemy is removed
     cleanup() {
+        // Remove debug label
         if (this.debugLabel) {
             this.mesh.remove(this.debugLabel);
             this.debugLabel.element.remove();
             this.debugLabel = null;
         }
+        
+        // Remove particle effects
+        if (this.particles) {
+            this.mesh.remove(this.particles);
+            this.particles.geometry.dispose();
+            this.particles.material.dispose();
+            this.particles = null;
+        }
+        
+        // Remove any child meshes (like rings or effects)
+        while (this.mesh.children.length > 0) {
+            const child = this.mesh.children[0];
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+            this.mesh.remove(child);
+        }
+        
+        // Clear all status effects
+        this.activeEffects.clear();
     }
 } 

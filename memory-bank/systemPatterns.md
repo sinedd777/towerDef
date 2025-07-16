@@ -17,14 +17,27 @@
      - Target acquisition
      - Attack mechanics
      - Range visualization
+     - Elemental properties
+     - Upgrade paths
 
-3. **Enemy System**
+3. **Elemental System**
+   - Element management and unlocks
+   - Tower combination logic
+   - Elemental boss spawning
+   - Damage type system
+   - Components:
+     - Element selection UI
+     - Tower upgrade paths
+     - Boss wave integration
+     - Element effectiveness
+
+4. **Enemy System**
    - Enemy class with health and movement
    - Waypoint-based pathfinding
    - Automatic spawning system
    - Death and cleanup handling
 
-4. **Projectile System**
+5. **Projectile System**
    - Projectile class for tower attacks
    - Collision detection
    - Damage application
@@ -46,6 +59,14 @@
 - Tower creation based on type configurations
 - Enemy spawning system
 - Projectile generation
+- Elemental tower combinations
+- Boss wave generation
+
+### Strategy Pattern
+- Element combination rules
+- Tower targeting behaviors
+- Damage type calculations
+- Boss behavior patterns
 
 ### Singleton Pattern
 - Game state management
@@ -75,10 +96,13 @@
 ## File Structure
 ```
 src/
-├── main.js         # Game loop and setup
-├── Enemy.js        # Enemy behavior
-├── Tower.js        # Tower mechanics
-├── Projectile.js   # Projectile physics
-├── GameState.js    # State management
-└── TowerTypes.js   # Tower configurations
+├── main.js           # Game loop and setup
+├── Enemy.js          # Enemy behavior
+├── Tower.js          # Tower mechanics
+├── Projectile.js     # Projectile physics
+├── GameState.js      # State management
+├── TowerTypes.js     # Tower configurations
+├── ElementSystem.js  # Element management
+├── BossSystem.js     # Boss wave mechanics
+└── Combinations.js   # Tower combinations
 ``` 

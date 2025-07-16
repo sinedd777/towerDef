@@ -47,18 +47,42 @@ The project is currently in active development with a working prototype that inc
    - Assess visual clarity
    - Monitor player feedback
 
+## Elemental System Planning
+1. Core Elements
+   - Six base elements: Fire, Water, Nature, Light, Darkness, Earth
+   - Element selection every 5 waves
+   - Elemental boss spawning system
+
+2. Tower Combinations
+   - Single element towers (e.g., Fire Tower)
+   - Dual element towers (e.g., Fire + Light = Lightning Tower)
+   - Triple element possibilities for endgame
+   - Element effectiveness system
+
+3. Implementation Priority
+   - Base element system and UI
+   - Single element towers
+   - Elemental boss mechanics
+   - Dual element combinations
+   - Triple element combinations
+
 ## Next Steps
 1. Short Term
+   - Implement base elemental system
+   - Create elemental tower variants
+   - Add elemental boss mechanics
    - Add sound effects
    - Implement particle effects
    - Add tower upgrades
 
 2. Medium Term
+   - Implement dual element combinations
    - Create more enemy types
    - Add special abilities
    - Implement save/load system
 
 3. Long Term
+   - Add triple element combinations
    - Add campaign mode
    - Create achievement system
    - Implement multiplayer support 
