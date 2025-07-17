@@ -18,6 +18,10 @@ export class Tower {
             towerConfig.model.base.geometry,
             towerConfig.model.base.material.clone()
         );
+        // Adjust vertical position so tower base sits on top of block (block top ≈ 0.5)
+        // The cylinder geometry is centered, so half its height is 0.5 ⇒ bottom = center - 0.5
+        // To align bottom with 0.5, set mesh center y to 1.0
+        this.position.y = 1.0; // Override y to ensure correct placement
         this.mesh.position.copy(this.position);
         this.mesh.castShadow = true;
         
@@ -31,7 +35,9 @@ export class Tower {
         });
         this.rangeIndicator = new THREE.Mesh(rangeGeometry, rangeMaterial);
         this.rangeIndicator.rotation.x = -Math.PI / 2;
-        this.rangeIndicator.position.set(0, -0.49, 0);
+        // Keep range indicator almost at ground level (y≈0.01)
+        const groundOffset = 0.01 - this.position.y;
+        this.rangeIndicator.position.set(0, groundOffset, 0);
         this.mesh.add(this.rangeIndicator);
         
         // Create barrel (except for area tower)

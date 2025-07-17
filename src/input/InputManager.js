@@ -4,7 +4,7 @@ import { debugLog } from '../config/DebugConfig.js';
 import { Pathfinding } from '../Pathfinding.js';
 
 export class InputManager {
-    constructor(scene, camera, renderer, gameState, ground, pathWaypoints, towers) {
+    constructor(scene, camera, renderer, gameState, ground, pathWaypoints, towers, mazeState) {
         this.scene = scene;
         this.camera = camera;
         this.renderer = renderer;
@@ -12,6 +12,11 @@ export class InputManager {
         this.ground = ground;
         this.pathWaypoints = pathWaypoints;
         this.towers = towers;
+
+        // Maze information – towers can only be placed on top of these blocks
+        this.mazeObstacles = mazeState ? mazeState.getObstacles() : [];
+        // Create a quick-lookup set for validity checks
+        this.mazeObstacleSet = new Set(this.mazeObstacles.map(o => `${o.x.toFixed(1)}_${o.z.toFixed(1)}`));
         
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
@@ -50,11 +55,12 @@ export class InputManager {
         
         if (intersects.length > 0) {
             const point = intersects[0].point;
-            const gridX = Math.round(point.x);
-            const gridZ = Math.round(point.z);
+            // Snap to nearest cell centre (handles negative and positive correctly)
+            const gridX = Math.round(point.x - 0.5) + 0.5;
+            const gridZ = Math.round(point.z - 0.5) + 0.5;
             
-            // Update preview tower position
-            this.previewTower.mesh.position.set(gridX, 0.5, gridZ);
+            // Update preview tower position (center y = 1.0)
+            this.previewTower.mesh.position.set(gridX, 1.0, gridZ);
             this.previewTower.rangeIndicator.position.set(gridX, 0.01, gridZ);
             
             // Update preview color based on position validity
@@ -104,8 +110,8 @@ export class InputManager {
         
         if (intersects.length > 0) {
             const point = intersects[0].point;
-            const gridX = Math.round(point.x);
-            const gridZ = Math.round(point.z);
+            const gridX = Math.round(point.x - 0.5) + 0.5;
+            const gridZ = Math.round(point.z - 0.5) + 0.5;
             
             debugLog(`Grid position: ${gridX}, ${gridZ}`, 'TOWER_PLACEMENT');
             
@@ -131,7 +137,7 @@ export class InputManager {
         // Create new tower using the Tower class
         const tower = new Tower(
             gridX,
-            0.5,
+            1.0, // Center height adjusted to sit on top of block
             gridZ,
             this.selectedTowerData.id
         );
@@ -181,6 +187,11 @@ export class InputManager {
     }
 
     isValidTowerPosition(x, z) {
+        // Towers must sit on a maze block
+        if (!this.mazeObstacleSet.has(`${x.toFixed(1)}_${z.toFixed(1)}`)) {
+            return false;
+        }
+
         // Check if position is occupied by another tower
         for (const tower of this.towers) {
             const pos = tower.getPosition();
@@ -230,8 +241,8 @@ export class InputManager {
     }
     
     getAllObstacles() {
-        const obstacles = [];
-        // Add existing towers
+        // Combine maze blocks (static) and existing towers (dynamic)
+        const obstacles = [...this.mazeObstacles];
         for (const tower of this.towers) {
             const pos = tower.getPosition();
             obstacles.push({ x: pos.x, z: pos.z });
@@ -270,7 +281,7 @@ export class InputManager {
         debugLog(`Creating preview tower for: ${towerData.name}`, 'TOWER_PLACEMENT');
         
         // Create preview tower using the Tower class
-        const tower = new Tower(0, 0.5, 0, towerData.id);
+        const tower = new Tower(0, 1.0, 0, towerData.id);
         
         // Make preview tower transparent
         tower.mesh.material.transparent = true;

@@ -10,6 +10,7 @@ import { MazeInputManager } from './mazeBuilder/MazeInputManager.js';
 import { Pathfinding } from './Pathfinding.js';
 import { TowerSelectionUI } from './ui/TowerSelectionUI.js';
 import { TOWER_TYPES } from './TowerTypes.js';
+import { loadTexture } from './utils/textureLoader.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -76,7 +77,9 @@ scene.add(directionalLight);
 
 // Ground plane
 const groundGeometry = new THREE.PlaneGeometry(20, 20);
-const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+// Use a seamless grass texture from the web (small size, CORS-enabled)
+const grassTexture = loadTexture('https://threejs.org/examples/textures/terrain/grasslight-big.jpg', 10, 10);
+const groundMaterial = new THREE.MeshLambertMaterial({ map: grassTexture });
 const ground = new THREE.Mesh(groundGeometry, groundMaterial);
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
@@ -92,14 +95,26 @@ function updatePathVisualization(waypoints) {
     // Remove existing path line
     if (pathLine) {
         scene.remove(pathLine);
+        pathLine.geometry.dispose();
+        pathLine.material.dispose();
         pathLine = null;
     }
 
     // Only create new path line if waypoints exist
     if (waypoints && waypoints.length > 0) {
         const pathGeometry = new THREE.BufferGeometry().setFromPoints(waypoints);
-        const pathMaterial = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 3 });
+
+        const pathMaterial = new THREE.LineDashedMaterial({
+            color: 0xff0000,
+            dashSize: 0.4,
+            gapSize: 0.4,
+            transparent: true,
+            opacity: 0.8
+        });
+
         pathLine = new THREE.Line(pathGeometry, pathMaterial);
+        // Required for dashed lines to appear
+        pathLine.computeLineDistances();
         scene.add(pathLine);
     }
 }
@@ -205,7 +220,8 @@ function initializeTowerInput() {
         gameState,
         ground,
         currentPath, // Pass current path waypoints
-        towers
+        towers,
+        mazeState // Allow tower validation against maze blocks
     );
     
     // Initialize basic towers
@@ -239,6 +255,23 @@ function animate() {
     
     const currentTime = Date.now();
     
+    // Animate dashed line
+    if (pathLine) {
+        // Move dash offset to create motion illusion
+        pathLine.material.dashOffset -= 0.02;
+    }
+
+    // Display path continuously during maze building
+    if (gameState.isMazeBuilding()) {
+        const obstacles = getAllObstacles();
+        const currentPath = pathfinding.findPath(
+            { x: enemyStartPosition.x, z: enemyStartPosition.z },
+            { x: enemyEndPosition.x, z: enemyEndPosition.z },
+            obstacles
+        );
+        updatePathVisualization(currentPath);
+    }
+
     // Only spawn enemies during defense phase
     if (gameState.isDefensePhase() && currentTime - lastEnemySpawn > enemySpawnInterval && gameState.canSpawnMore()) {
         const currentWave = gameState.getWave();
