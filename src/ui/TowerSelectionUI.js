@@ -264,4 +264,20 @@ export class TowerSelectionUI {
     clearSelection() {
         this.deselectAllTowers();
     }
+
+    // Show the tower selection UI
+    show() {
+        const menu = document.getElementById('basic-tower-menu');
+        if (menu) {
+            menu.style.display = 'grid';
+        }
+    }
+
+    // Hide the tower selection UI
+    hide() {
+        const menu = document.getElementById('basic-tower-menu');
+        if (menu) {
+            menu.style.display = 'none';
+        }
+    }
 } 

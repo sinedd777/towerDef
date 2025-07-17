@@ -1,19 +1,22 @@
 # Active Context
 
 ## Current Focus
-The project is currently in active development with a working prototype that includes:
+The project now includes a complete maze-building phase with a working prototype that includes:
 - Complete tower placement system
 - Four distinct tower types
-- Enemy spawning and pathfinding
+- Enemy spawning and pathfinding with A* algorithm
 - Resource management system
 - Wave progression
+- Tetris-style maze building phase
+- Dynamic pathfinding around player-placed obstacles
 
 ## Recent Changes
-1. Implemented tower destruction functionality
-2. Added visual feedback for tower placement
-3. Balanced tower costs and damage values
-4. Improved enemy spawning system
-5. Enhanced visual effects for tower attacks
+1. Implemented complete maze-building phase with Tetris shapes
+2. Added dynamic pathfinding system using A* algorithm
+3. Created dual-phase gameplay (Build Maze → Defense)
+4. Implemented drag-drop shape placement with rotation controls
+5. Added comprehensive UI for maze building phase
+6. Integrated obstacle-aware enemy pathfinding
 
 ## Active Decisions
 1. Tower Balance

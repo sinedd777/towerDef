@@ -6,6 +6,10 @@ export class GameState {
         this.enemiesCount = 0;
         this.maxEnemies = 10;
         
+        // Game phases: 'MAZE_BUILDING' or 'DEFENSE'
+        this.currentPhase = 'MAZE_BUILDING';
+        this.mazeCompleted = false;
+        
         // DOM element references
         this.moneyElement = document.getElementById('money');
         this.scoreElement = document.getElementById('score');
@@ -81,6 +85,38 @@ export class GameState {
         if (this.scoreElement) this.scoreElement.textContent = this.score;
         if (this.waveElement) this.waveElement.textContent = this.wave;
         if (this.enemiesElement) this.enemiesElement.textContent = this.enemiesCount;
+        
+        // Update phase indicator if it exists
+        const phaseElement = document.getElementById('phase');
+        if (phaseElement) {
+            phaseElement.textContent = this.currentPhase === 'MAZE_BUILDING' ? 'Build Maze' : 'Defense';
+        }
+    }
+
+    // Phase management methods
+    getCurrentPhase() {
+        return this.currentPhase;
+    }
+
+    isMazeBuilding() {
+        return this.currentPhase === 'MAZE_BUILDING';
+    }
+
+    isDefensePhase() {
+        return this.currentPhase === 'DEFENSE';
+    }
+
+    startDefensePhase() {
+        this.currentPhase = 'DEFENSE';
+        this.mazeCompleted = true;
+        this.updateHUD();
+        console.log('Defense phase started!');
+    }
+
+    resetToMazeBuildingPhase() {
+        this.currentPhase = 'MAZE_BUILDING';
+        this.mazeCompleted = false;
+        this.updateHUD();
     }
     
     // Save game state

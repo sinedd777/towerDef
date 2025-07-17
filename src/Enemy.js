@@ -68,7 +68,6 @@ export class Enemy {
         debugDiv.style.whiteSpace = 'nowrap';
         this.debugLabel = new CSS2DObject(debugDiv);
         this.debugLabel.position.set(0, 1, 0);
-
         this.mesh.add(this.debugLabel);
         
         // Update debug info initially
@@ -91,11 +90,6 @@ export class Enemy {
             const nextWaypoint = this.waypoints[this.currentWaypointIndex + 1];
             
             this.direction.subVectors(nextWaypoint, currentWaypoint).normalize();
-            
-            // If confused, reverse direction
-            if (this.activeEffects.has('confused')) {
-                this.direction.multiplyScalar(-1);
-            }
         }
     }
     
@@ -125,11 +119,7 @@ export class Enemy {
         if (distanceToTarget < 0.1) {
             // Snap to waypoint and move to next one
             this.mesh.position.copy(targetWaypoint);
-            
-            // If confused, stay at current waypoint
-            if (!this.activeEffects.has('confused')) {
-                this.currentWaypointIndex++;
-            }
+            this.currentWaypointIndex++;
             
             if (this.currentWaypointIndex >= this.waypoints.length - 1) {
                 this.hasReachedEndFlag = true;
@@ -151,10 +141,6 @@ export class Enemy {
         for (const [effect, data] of this.activeEffects.entries()) {
             if (currentTime >= data.endTime) {
                 this.activeEffects.delete(effect);
-                // If confusion ends, recalculate direction
-                if (effect === 'confused') {
-                    this.calculateDirection();
-                }
                 continue;
             }
             
@@ -168,9 +154,6 @@ export class Enemy {
                     break;
                 case 'stun':
                     speedModifier = 0; // Cannot move
-                    break;
-                case 'confused':
-                    // Direction is handled in calculateDirection()
                     break;
             }
         }
@@ -192,7 +175,6 @@ export class Enemy {
             case 'slow':
             case 'weaken':
             case 'stun':
-            case 'confused':
                 this.activeEffects.set(effectType, effect);
                 break;
         }

@@ -12,13 +12,31 @@ export class MazeInputManager {
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
         
+        // Store bound event handlers for cleanup
+        this.boundMouseMove = this.onMouseMove.bind(this);
+        this.boundClick = this.onClick.bind(this);
+        this.boundKeyDown = this.onKeyDown.bind(this);
+        
         this.setupEventListeners();
     }
 
     setupEventListeners() {
-        window.addEventListener('mousemove', this.onMouseMove.bind(this));
-        window.addEventListener('click', this.onClick.bind(this));
-        window.addEventListener('keydown', this.onKeyDown.bind(this));
+        window.addEventListener('mousemove', this.boundMouseMove);
+        window.addEventListener('click', this.boundClick);
+        window.addEventListener('keydown', this.boundKeyDown);
+    }
+
+    cleanup() {
+        // Remove event listeners
+        window.removeEventListener('mousemove', this.boundMouseMove);
+        window.removeEventListener('click', this.boundClick);
+        window.removeEventListener('keydown', this.boundKeyDown);
+        
+        // Clear any preview shapes if they exist
+        if (this.mazeState.shapePreview) {
+            this.scene.remove(this.mazeState.shapePreview);
+            this.mazeState.shapePreview = null;
+        }
     }
 
     onKeyDown(event) {

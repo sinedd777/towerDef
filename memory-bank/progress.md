@@ -39,6 +39,9 @@
 - Score system
 - Tower targeting
 - Collision detection
+- Maze building phase with Tetris shapes
+- Dynamic pathfinding with A* algorithm
+- Dual-phase gameplay system
 
 ## In Progress Features 🚧
 

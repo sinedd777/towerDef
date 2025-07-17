@@ -58,10 +58,6 @@ const pathfinding = new Pathfinding(20);
 // UI System initialization
 const towerSelectionUI = new TowerSelectionUI(gameState);
 
-// Initialize basic towers
-const basicTowers = Object.values(TOWER_TYPES);
-towerSelectionUI.updateBasicTowerGrid(basicTowers);
-
 // Listen for tower updates
 document.addEventListener('towersUpdated', (event) => {
     towerSelectionUI.updateTowerMenu();
@@ -211,6 +207,10 @@ function initializeTowerInput() {
         currentPath, // Pass current path waypoints
         towers
     );
+    
+    // Initialize basic towers
+    const basicTowers = Object.values(TOWER_TYPES);
+    towerSelectionUI.updateBasicTowerGrid(basicTowers);
     
     // Setup system callbacks
     towerSelectionUI.setOnTowerSelectedCallback((towerData) => {
