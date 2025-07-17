@@ -8,12 +8,13 @@ const ENEMY_TEX = loadTexture('https://threejs.org/examples/textures/planets/jup
 
 export class Enemy {
     constructor(waypoints, wave = 1) {
+        this.originalWaypoints = waypoints;
         this.waypoints = waypoints;
         this.currentWaypointIndex = 0;
         this.wave = wave;
         
         // Enhanced scaling based on wave number
-        const baseSpeed = 1.0;
+        const baseSpeed = 1.2;
         const baseHealth = 100;
         
         // Exponential scaling for higher waves
@@ -22,8 +23,27 @@ export class Enemy {
         
         this.speed = baseSpeed * speedMultiplier;
         this.baseSpeed = this.speed;
+        this.currentSpeed = this.speed; // Current speed (after turn modulation)
         this.health = baseHealth * healthMultiplier;
         this.maxHealth = this.health;
+        
+        // Path following variables
+        this.pathProgress = 0; // Progress along current segment (0-1)
+        this.currentSegmentIndex = 0;
+        this.direction = new THREE.Vector3();
+        this.velocity = new THREE.Vector3();
+        
+        // Collision avoidance
+        this.radius = 0.25; // Collision radius
+        this.minSeparationDistance = 0.6; // Minimum distance from other enemies
+        this.avoidanceForce = new THREE.Vector3();
+        
+        // Turn detection and speed modulation
+        this.upcomingTurnDistance = 3.0; // How far ahead to look for turns
+        this.turnSpeedReduction = 0.8; // Maximum speed reduction at turns (60% reduction)
+        this.minTurnAngle = Math.PI / 12; // Minimum angle (15 degrees) to start slowing
+        this.isNearTurn = false;
+        this.currentTurnAngle = 0;
         
         // Status effect tracking
         this.activeEffects = new Map();
@@ -65,33 +85,35 @@ export class Enemy {
         
         // Start at the first waypoint
         if (waypoints.length > 0) {
-            this.mesh.position.copy(waypoints[0]);
+            const startPos = waypoints[0].position || waypoints[0];
+            this.mesh.position.copy(startPos);
         }
         
-        this.direction = new THREE.Vector3();
         this.hasReachedEndFlag = false;
         
         this.calculateDirection();
     }
     
     calculateDirection() {
-        if (this.currentWaypointIndex < this.waypoints.length - 1) {
-            const currentWaypoint = this.waypoints[this.currentWaypointIndex];
-            const nextWaypoint = this.waypoints[this.currentWaypointIndex + 1];
+        if (this.currentSegmentIndex < this.waypoints.length - 1) {
+            const currentWaypoint = this.waypoints[this.currentSegmentIndex];
+            const nextWaypoint = this.waypoints[this.currentSegmentIndex + 1];
             
-            this.direction.subVectors(nextWaypoint, currentWaypoint).normalize();
+            const currentPos = currentWaypoint.position || currentWaypoint;
+            const nextPos = nextWaypoint.position || nextWaypoint;
+            
+            this.direction.subVectors(nextPos, currentPos).normalize();
         }
     }
     
-    update() {
-        if (this.hasReachedEndFlag || this.currentWaypointIndex >= this.waypoints.length - 1) {
+    update(allEnemies = []) {
+        if (this.hasReachedEndFlag || this.currentSegmentIndex >= this.waypoints.length - 1) {
             return;
         }
         
         // Update status effects
         this.updateStatusEffects();
         
-        const targetWaypoint = this.waypoints[this.currentWaypointIndex + 1];
         const deltaTime = 0.016; // Approximately 60 FPS
         
         // If stunned, don't move
@@ -99,24 +121,14 @@ export class Enemy {
             return;
         }
         
-        // Move towards the next waypoint with current speed (affected by status effects)
-        const movement = this.direction.clone().multiplyScalar(this.speed * deltaTime);
-        this.mesh.position.add(movement);
+        // Calculate upcoming turn influence on speed
+        this.updateTurnDetection();
         
-        // Check if we've reached the current target waypoint
-        const distanceToTarget = this.mesh.position.distanceTo(targetWaypoint);
+        // Calculate collision avoidance forces
+        this.calculateAvoidanceForce(allEnemies);
         
-        if (distanceToTarget < 0.1) {
-            // Snap to waypoint and move to next one
-            this.mesh.position.copy(targetWaypoint);
-            this.currentWaypointIndex++;
-            
-            if (this.currentWaypointIndex >= this.waypoints.length - 1) {
-                this.hasReachedEndFlag = true;
-            } else {
-                this.calculateDirection();
-            }
-        }
+        // Update movement using smooth interpolation between waypoints
+        this.updateSmoothMovement(deltaTime);
         
         // Add UFO rotation animation if model is loaded
         if (this.isModelLoaded && this.mesh.children.length > 0) {
@@ -130,6 +142,143 @@ export class Enemy {
         
         // Update debug info
         this.updateDebugInfo();
+    }
+    
+    updateSmoothMovement(deltaTime) {
+        if (this.currentSegmentIndex >= this.waypoints.length - 1) {
+            this.hasReachedEndFlag = true;
+            return;
+        }
+        
+        const currentWaypoint = this.waypoints[this.currentSegmentIndex];
+        const nextWaypoint = this.waypoints[this.currentSegmentIndex + 1];
+        
+        const currentPos = currentWaypoint.position || currentWaypoint;
+        const nextPos = nextWaypoint.position || nextWaypoint;
+        
+        // Calculate segment length and direction
+        const segmentDirection = new THREE.Vector3().subVectors(nextPos, currentPos);
+        const segmentLength = segmentDirection.length();
+        segmentDirection.normalize();
+        
+        // Calculate speed modifiers
+        let speedModifier = 1.0;
+        
+        // Turn speed reduction with quadratic scaling for smoother transitions
+        if (this.isNearTurn && this.currentTurnAngle > this.minTurnAngle) {
+            // Normalize angle between minTurnAngle and PI
+            const normalizedAngle = (this.currentTurnAngle - this.minTurnAngle) / (Math.PI - this.minTurnAngle);
+            // Apply quadratic easing for smoother speed reduction
+            const turnFactor = Math.max(0.4, 1.0 - (normalizedAngle * normalizedAngle) * this.turnSpeedReduction);
+            speedModifier *= turnFactor;
+        }
+        
+        // Status effect speed modifications (handled in updateStatusEffects)
+        this.currentSpeed = this.speed * speedModifier;
+        
+        // Calculate velocity including avoidance
+        this.velocity.copy(segmentDirection);
+        this.velocity.multiplyScalar(this.currentSpeed);
+        
+        // Apply avoidance force (but keep it limited to not break path following)
+        const avoidanceStrength = 0.3;
+        this.velocity.add(this.avoidanceForce.clone().multiplyScalar(avoidanceStrength));
+        
+        // Move along the path
+        const movement = this.velocity.clone().multiplyScalar(deltaTime);
+        this.mesh.position.add(movement);
+        
+        // Update progress along current segment
+        const currentSegmentPos = new THREE.Vector3().subVectors(this.mesh.position, currentPos);
+        this.pathProgress = currentSegmentPos.dot(segmentDirection) / segmentLength;
+        
+        // Check if we've reached the next waypoint
+        if (this.pathProgress >= 1.0) {
+            // Snap to exact waypoint position (but allow slight avoidance offset)
+            const targetPos = nextPos.clone();
+            
+            // Keep some avoidance offset but ensure forward progress
+            const avoidanceOffset = this.avoidanceForce.clone().multiplyScalar(0.1);
+            avoidanceOffset.y = 0; // Keep Y level
+            targetPos.add(avoidanceOffset);
+            
+            this.mesh.position.copy(targetPos);
+            
+            // Move to next segment
+            this.currentSegmentIndex++;
+            this.pathProgress = 0;
+            
+            if (this.currentSegmentIndex >= this.waypoints.length - 1) {
+                this.hasReachedEndFlag = true;
+            } else {
+                this.calculateDirection();
+            }
+        }
+    }
+    
+    updateTurnDetection() {
+        this.isNearTurn = false;
+        this.currentTurnAngle = 0;
+        
+        // Look ahead for upcoming turns
+        let lookAheadDistance = 0;
+        let checkIndex = this.currentSegmentIndex;
+        
+        while (checkIndex < this.waypoints.length - 1 && lookAheadDistance < this.upcomingTurnDistance) {
+            const waypoint = this.waypoints[checkIndex];
+            const nextWaypoint = this.waypoints[checkIndex + 1];
+            
+            const currentPos = waypoint.position || waypoint;
+            const nextPos = nextWaypoint.position || nextWaypoint;
+            
+            const segmentLength = currentPos.distanceTo(nextPos);
+            lookAheadDistance += segmentLength;
+            
+            // Check if this waypoint has turn information
+            if (waypoint.isSharpTurn || (waypoint.turnAngle && waypoint.turnAngle > Math.PI / 6)) {
+                this.isNearTurn = true;
+                this.currentTurnAngle = waypoint.turnAngle || 0;
+                
+                // Adjust turn effect based on distance
+                const distanceFactor = Math.max(0.2, 1.0 - (lookAheadDistance / this.upcomingTurnDistance));
+                this.currentTurnAngle *= distanceFactor;
+                break;
+            }
+            
+            checkIndex++;
+        }
+    }
+    
+    calculateAvoidanceForce(allEnemies) {
+        this.avoidanceForce.set(0, 0, 0);
+        
+        for (const otherEnemy of allEnemies) {
+            if (otherEnemy === this || !otherEnemy.isAlive()) continue;
+            
+            const distance = this.mesh.position.distanceTo(otherEnemy.mesh.position);
+            
+            if (distance < this.minSeparationDistance && distance > 0) {
+                // Calculate repulsion force
+                const repulsion = new THREE.Vector3()
+                    .subVectors(this.mesh.position, otherEnemy.mesh.position)
+                    .normalize();
+                
+                // Stronger force when closer
+                const forceMagnitude = (this.minSeparationDistance - distance) / this.minSeparationDistance;
+                repulsion.multiplyScalar(forceMagnitude * 2.0);
+                
+                // Reduce Y component to keep movement horizontal
+                repulsion.y *= 0.1;
+                
+                this.avoidanceForce.add(repulsion);
+            }
+        }
+        
+        // Limit avoidance force to prevent path breaking
+        const maxAvoidanceForce = 1.5;
+        if (this.avoidanceForce.length() > maxAvoidanceForce) {
+            this.avoidanceForce.normalize().multiplyScalar(maxAvoidanceForce);
+        }
     }
     
     updateStatusEffects() {
@@ -158,7 +307,7 @@ export class Enemy {
             }
         }
         
-        // Update final speed
+        // Update base speed (before turn modifications)
         this.speed = this.baseSpeed * speedModifier;
     }
     
@@ -189,7 +338,7 @@ export class Enemy {
     showEffectApplication() {
         // Create a quick flash effect
         const flashGeometry = new THREE.SphereGeometry(
-            this.mesh.geometry.parameters.radius * 1.2,
+            this.radius * 1.5,
             8,
             6
         );
@@ -259,9 +408,16 @@ export class Enemy {
         let statusEffects = Array.from(this.activeEffects.keys()).join(', ');
         let effectsText = statusEffects ? `Effects: ${statusEffects}` : '';
         
+        // Convert turn angle to degrees for display
+        const turnAngleDegrees = Math.round(this.currentTurnAngle * (180 / Math.PI));
+        let turnText = this.isNearTurn ? `Turn: ${turnAngleDegrees}°` : '';
+        let speedText = `Speed: ${Math.round((this.currentSpeed / this.baseSpeed) * 100)}%`;
+        
         this.debugLabel.element.innerHTML = `
             Wave ${this.wave}<br>
             HP: ${healthPercent}%<br>
+            ${speedText}<br>
+            ${turnText}<br>
             ${effectsText}
         `;
         
@@ -319,7 +475,7 @@ export class Enemy {
         console.warn('Using fallback geometry for enemy');
         
         // Consistent size across all waves
-        const size = 0.3;
+        const size = this.radius;
         
         const geometry = new THREE.SphereGeometry(size, 8, 6);
         const material = new THREE.MeshPhongMaterial({ 

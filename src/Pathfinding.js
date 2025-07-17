@@ -180,75 +180,218 @@ export class Pathfinding {
 
     // Reconstruct path from end node
     reconstructPath(endNode) {
-        const path = [];
+        const rawPath = [];
         let current = endNode;
         
         while (current) {
-            path.unshift(new THREE.Vector3(current.x, 0.1, current.z));
+            // Center waypoints in grid cells instead of placing on grid intersections
+            rawPath.unshift(new THREE.Vector3(current.x, 0.1, current.z));
             current = current.parent;
         }
         
-        // Smooth the path
-        return this.smoothPath(path, this.currentObstacles);
+        // Create smooth curved path
+        const smoothedPath = this.createSmoothPath(rawPath, this.currentObstacles);
+        
+        // Add turn angle information to each waypoint
+        return this.addTurnAngles(smoothedPath);
     }
 
-    // Smooth the path by removing unnecessary waypoints
-    smoothPath(path, obstacles) {
+    // Create a smooth curved path using spline interpolation
+    createSmoothPath(rawPath, obstacles) {
+        if (rawPath.length <= 2) return rawPath;
+        
+        // First pass: Simplify path by removing unnecessary intermediate points
+        const simplifiedPath = this.simplifyPath(rawPath, obstacles);
+        
+        // Second pass: Create smooth curves between waypoints
+        const smoothPath = [];
+        
+        for (let i = 0; i < simplifiedPath.length; i++) {
+            smoothPath.push(simplifiedPath[i].clone());
+            
+            // Add curve points between waypoints (except for the last one)
+            if (i < simplifiedPath.length - 1) {
+                const current = simplifiedPath[i];
+                const next = simplifiedPath[i + 1];
+                
+                // Calculate control points for smooth curves
+                const curvePoints = this.createCurvePoints(current, next, simplifiedPath, i);
+                smoothPath.push(...curvePoints);
+            }
+        }
+        
+        return smoothPath;
+    }
+
+    // Simplify path by removing redundant waypoints
+    simplifyPath(path, obstacles) {
         if (path.length <= 2) return path;
         
-        const smoothed = [path[0]];
+        const simplified = [path[0]];
         let current = 0;
         
         while (current < path.length - 1) {
             let furthest = current + 1;
             
-            // Look ahead for furthest visible node
+            // Look ahead for furthest visible point
             for (let i = current + 2; i < path.length; i++) {
-                const line = new THREE.Line3(path[current], path[i]);
-                let blocked = false;
-                
-                // Check more points along the line for better obstacle detection
-                for (let t = 0; t <= 1; t += 0.05) { // Increased sampling frequency
-                    const point = new THREE.Vector3();
-                    line.at(t, point);
-                    
-                    // Check if point is in bounds
-                    if (!this.isInBounds(point.x, point.z)) {
-                        blocked = true;
-                        break;
-                    }
-                    
-                    // Check the point and its surroundings for better clearance
-                    const checkPoints = [
-                        { x: point.x, z: point.z },
-                        { x: point.x + 0.4, z: point.z },
-                        { x: point.x - 0.4, z: point.z },
-                        { x: point.x, z: point.z + 0.4 },
-                        { x: point.x, z: point.z - 0.4 }
-                    ];
-                    
-                    for (const checkPoint of checkPoints) {
-                        if (!this.isInBounds(checkPoint.x, checkPoint.z) || 
-                            this.isBlocked(checkPoint.x, checkPoint.z, obstacles)) {
-                            blocked = true;
-                            break;
-                        }
-                    }
-                    
-                    if (blocked) break;
-                }
-                
-                if (!blocked) {
+                if (this.hasLineOfSight(path[current], path[i], obstacles)) {
                     furthest = i;
                 } else {
-                    break; // Stop looking ahead if we found a blocked path
+                    break;
                 }
             }
             
-            smoothed.push(path[furthest]);
+            simplified.push(path[furthest]);
             current = furthest;
         }
         
-        return smoothed;
+        return simplified;
+    }
+
+    // Check if there's a clear line of sight between two points
+    hasLineOfSight(start, end, obstacles) {
+        const direction = new THREE.Vector3().subVectors(end, start);
+        const distance = direction.length();
+        direction.normalize();
+        
+        // Sample points along the line
+        const samples = Math.ceil(distance * 4); // More samples for better accuracy
+        
+        for (let i = 1; i < samples; i++) {
+            const t = i / samples;
+            const samplePoint = new THREE.Vector3().addVectors(
+                start, 
+                direction.clone().multiplyScalar(distance * t)
+            );
+            
+            // Check if sample point or its surroundings are blocked
+            const checkRadius = 0.3; // Safety margin around the path
+            const checkPoints = [
+                { x: samplePoint.x, z: samplePoint.z },
+                { x: samplePoint.x + checkRadius, z: samplePoint.z },
+                { x: samplePoint.x - checkRadius, z: samplePoint.z },
+                { x: samplePoint.x, z: samplePoint.z + checkRadius },
+                { x: samplePoint.x, z: samplePoint.z - checkRadius }
+            ];
+            
+            for (const point of checkPoints) {
+                if (!this.isInBounds(point.x, point.z) || 
+                    this.isBlocked(point.x, point.z, obstacles)) {
+                    return false;
+                }
+            }
+        }
+        
+        return true;
+    }
+
+    // Create smooth curve points between two waypoints
+    createCurvePoints(current, next, fullPath, index) {
+        const curvePoints = [];
+        
+        // Determine if this is a turn by looking at previous and next directions
+        let prevDirection = null;
+        let nextDirection = null;
+        
+        if (index > 0) {
+            prevDirection = new THREE.Vector3()
+                .subVectors(current, fullPath[index - 1])
+                .normalize();
+        }
+        
+        if (index < fullPath.length - 2) {
+            nextDirection = new THREE.Vector3()
+                .subVectors(fullPath[index + 2], next)
+                .normalize();
+        }
+        
+        const currentDirection = new THREE.Vector3()
+            .subVectors(next, current)
+            .normalize();
+        
+        // If this is a significant turn, add curve points
+        const isSignificantTurn = prevDirection && 
+            Math.abs(prevDirection.dot(currentDirection)) < 0.9; // Angle > ~25 degrees
+        
+        if (isSignificantTurn) {
+            // Create a smooth curve using quadratic bezier
+            const controlPoint = this.calculateControlPoint(current, next, prevDirection);
+            
+            // Add intermediate points along the curve
+            const curveSegments = 3;
+            for (let t = 0.25; t < 1; t += 0.25) {
+                const curvePoint = this.quadraticBezier(current, controlPoint, next, t);
+                curvePoints.push(curvePoint);
+            }
+        } else {
+            // For straight sections, add fewer intermediate points
+            const midPoint = new THREE.Vector3()
+                .addVectors(current, next)
+                .multiplyScalar(0.5);
+            curvePoints.push(midPoint);
+        }
+        
+        return curvePoints;
+    }
+
+    // Calculate control point for bezier curve
+    calculateControlPoint(start, end, incomingDirection) {
+        const midPoint = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+        
+        if (incomingDirection) {
+            // Offset the control point to create a natural curve
+            const perpendicular = new THREE.Vector3(-incomingDirection.z, 0, incomingDirection.x);
+            const offset = perpendicular.multiplyScalar(0.3); // Curve intensity
+            midPoint.add(offset);
+        }
+        
+        return midPoint;
+    }
+
+    // Quadratic bezier interpolation
+    quadraticBezier(p0, p1, p2, t) {
+        const oneMinusT = 1 - t;
+        return new THREE.Vector3(
+            oneMinusT * oneMinusT * p0.x + 2 * oneMinusT * t * p1.x + t * t * p2.x,
+            0.1, // Keep Y constant
+            oneMinusT * oneMinusT * p0.z + 2 * oneMinusT * t * p1.z + t * t * p2.z
+        );
+    }
+
+    // Add turn angle information to waypoints for speed modulation
+    addTurnAngles(path) {
+        if (path.length <= 2) return path;
+        
+        const pathWithAngles = [];
+        
+        for (let i = 0; i < path.length; i++) {
+            const waypoint = {
+                position: path[i].clone(),
+                turnAngle: 0,
+                isSharpTurn: false
+            };
+            
+            // Calculate turn angle for middle waypoints
+            if (i > 0 && i < path.length - 1) {
+                const prev = path[i - 1];
+                const current = path[i];
+                const next = path[i + 1];
+                
+                const dir1 = new THREE.Vector3().subVectors(current, prev).normalize();
+                const dir2 = new THREE.Vector3().subVectors(next, current).normalize();
+                
+                // Calculate the angle between directions
+                const dotProduct = dir1.dot(dir2);
+                const angle = Math.acos(Math.max(-1, Math.min(1, dotProduct)));
+                
+                waypoint.turnAngle = angle;
+                waypoint.isSharpTurn = angle > Math.PI / 4; // > 45 degrees
+            }
+            
+            pathWithAngles.push(waypoint);
+        }
+        
+        return pathWithAngles;
     }
 } 

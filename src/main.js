@@ -189,7 +189,13 @@ function updatePathVisualization(waypoints) {
 
     // Only create new path line if waypoints exist
     if (waypoints && waypoints.length > 0) {
-        const pathGeometry = new THREE.BufferGeometry().setFromPoints(waypoints);
+        // Extract just the position vectors from the waypoints
+        const positions = waypoints.map(waypoint => {
+            // Handle both simple Vector3 waypoints and complex waypoints with turn info
+            return waypoint.position ? waypoint.position.clone() : waypoint.clone();
+        });
+
+        const pathGeometry = new THREE.BufferGeometry().setFromPoints(positions);
 
         const pathMaterial = new THREE.LineDashedMaterial({
             color: 0xff0000,
@@ -206,12 +212,12 @@ function updatePathVisualization(waypoints) {
     }
 }
 
-// Grid visualization (for tower placement)
-const gridSize = 20;
-const gridDivisions = 20;
-const gridHelper = new THREE.GridHelper(gridSize, gridDivisions);
-gridHelper.position.y = 0.01;
-scene.add(gridHelper);
+// // Grid visualization (for tower placement)
+// const gridSize = 20;
+// const gridDivisions = 20;
+// const gridHelper = new THREE.GridHelper(gridSize, gridDivisions);
+// gridHelper.position.y = 0.01;
+// scene.add(gridHelper);
 
 // Arrays to hold game objects
 const enemies = [];
@@ -402,7 +408,7 @@ function animate() {
     // Update enemies
     for (let i = enemies.length - 1; i >= 0; i--) {
         const enemy = enemies[i];
-        enemy.update();
+        enemy.update(enemies); // Pass all enemies for collision avoidance
         
         // Remove enemies that reached the end
         if (enemy.hasReachedEnd()) {
