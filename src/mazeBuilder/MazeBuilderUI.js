@@ -114,9 +114,12 @@ export class MazeBuilderUI {
         document.body.appendChild(this.panel);
     }
 
+    // Update the shape hand display
     updateShapeHand() {
         // Clear existing shapes
-        this.shapeContainer.innerHTML = '';
+        while (this.shapeContainer.firstChild) {
+            this.shapeContainer.removeChild(this.shapeContainer.firstChild);
+        }
         
         // Add "Next Shape" label back
         const nextShapeLabel = document.createElement('div');
@@ -130,7 +133,7 @@ export class MazeBuilderUI {
         this.shapeContainer.appendChild(nextShapeLabel);
         
         // Update shape count display
-        this.shapeCountDisplay.textContent = `Shapes Remaining: ${this.mazeState.currentShapeHand.length}`;
+        this.shapeCountDisplay.textContent = `Shapes remaining: ${this.mazeState.currentShapeHand.length}`;
         
         // Only show the first shape in hand
         if (this.mazeState.currentShapeHand.length > 0) {
@@ -138,9 +141,6 @@ export class MazeBuilderUI {
             const shapeElement = this.createShapeElement(nextShape);
             this.shapeContainer.appendChild(shapeElement);
         }
-        
-        // Update start button state
-        this.updateStartButton();
     }
 
     createShapeElement(shape) {
@@ -228,6 +228,7 @@ export class MazeBuilderUI {
     // Called when shape is placed
     onShapePlaced() {
         this.updateShapeHand();
+        this.updateStartButton();
     }
 
     // Hide the maze builder UI

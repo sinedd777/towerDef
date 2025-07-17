@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { generateShapeHand } from './TetrisShapes.js';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import { Pathfinding } from '../Pathfinding.js';
 
 export class MazeState {
     constructor(scene, gridSize = 10) {
@@ -14,6 +15,8 @@ export class MazeState {
         this.placedShapes = [];
         this.gridBlocks = []; // Visual blocks in the scene
         this.restrictedAreaMarkers = []; // Visual markers for restricted areas
+        this.pathfinding = new Pathfinding(gridSize);
+        this.lastPlacedShape = null;
         
         // Path constraints - start and end must remain clear
         // Start area is 2x2 in top-left corner at (-8,-8)
@@ -258,6 +261,61 @@ export class MazeState {
         return false;
     }
 
+    validatePath() {
+        const obstacles = this.getObstacles();
+        return this.pathfinding.findPath(
+            { x: this.pathStartArea.x, z: this.pathStartArea.z },
+            { x: this.pathEndArea.x, z: this.pathEndArea.z },
+            obstacles
+        );
+    }
+
+    undoLastPlacement() {
+        if (!this.lastPlacedShape) return false;
+
+        // Remove the shape from placedShapes
+        const index = this.placedShapes.indexOf(this.lastPlacedShape);
+        if (index !== -1) {
+            this.placedShapes.splice(index, 1);
+        }
+
+        // Remove the shape's cells from gridState
+        for (const cell of this.lastPlacedShape.getWorldCells()) {
+            const gridX = Math.floor(cell.x + this.gridSize/2);
+            const gridZ = Math.floor(cell.z + this.gridSize/2);
+            if (this.gridState[gridZ] && this.gridState[gridZ][gridX]) {
+                delete this.gridState[gridZ][gridX].occupied;
+                delete this.gridState[gridZ][gridX].shape;
+                delete this.gridState[gridZ][gridX].color;
+            }
+        }
+
+        // Remove visual blocks for this shape
+        const blocksToRemove = this.gridBlocks.filter(block => {
+            const blockX = Math.round(block.position.x);
+            const blockZ = Math.round(block.position.z);
+            return this.lastPlacedShape.getWorldCells().some(cell => 
+                Math.round(cell.x) === blockX && Math.round(cell.z) === blockZ
+            );
+        });
+
+        blocksToRemove.forEach(block => {
+            this.scene.remove(block);
+            const index = this.gridBlocks.indexOf(block);
+            if (index !== -1) {
+                this.gridBlocks.splice(index, 1);
+            }
+        });
+
+        // Add the shape back to the hand
+        this.currentShapeHand.push(this.lastPlacedShape);
+        
+        // Reset lastPlacedShape
+        this.lastPlacedShape = null;
+
+        return true;
+    }
+
     placeShape(worldX, worldZ) {
         if (!this.selectedShape) return false;
         
@@ -276,11 +334,24 @@ export class MazeState {
         // Create visual blocks
         this.createVisualBlocks(this.selectedShape);
         
+        // Store as last placed shape before adding to placedShapes
+        this.lastPlacedShape = this.selectedShape;
+        
         // Add to placed shapes and remove from hand
         this.placedShapes.push(this.selectedShape);
         const handIndex = this.currentShapeHand.indexOf(this.selectedShape);
         if (handIndex !== -1) {
             this.currentShapeHand.splice(handIndex, 1);
+        }
+
+        // Check if path is still valid
+        const validPath = this.validatePath();
+        if (!validPath) {
+            // Show alert
+            alert('This placement blocks all paths to the end! Click OK to undo and try again.');
+            // Undo the placement
+            this.undoLastPlacement();
+            return false;
         }
         
         // Clear selection
