@@ -202,29 +202,6 @@ export class InputManager {
             }
         }
         
-        // Check distance to path segments
-        const minPathDistance = 1.5; // Minimum distance from path
-        
-        for (let i = 0; i < this.pathWaypoints.length - 1; i++) {
-            const start = this.pathWaypoints[i];
-            const end = this.pathWaypoints[i + 1];
-            
-            // Calculate distance from point to line segment
-            const pathSegment = end.clone().sub(start);
-            const pointToStart = new THREE.Vector3(x, 0.1, z).sub(start);
-            
-            // Project point onto line segment
-            const segmentLength = pathSegment.length();
-            const t = Math.max(0, Math.min(1, pointToStart.dot(pathSegment) / segmentLength ** 2));
-            
-            const projection = start.clone().add(pathSegment.multiplyScalar(t));
-            const distance = new THREE.Vector3(x, 0.1, z).distanceTo(projection);
-            
-            if (distance < minPathDistance) {
-                return false;
-            }
-        }
-        
         // Check if placing tower here would block all possible paths
         const tempObstacles = [...this.getAllObstacles(), { x, z }];
         const pathfinding = new Pathfinding();
