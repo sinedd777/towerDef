@@ -5,6 +5,11 @@ export class GameState {
         this.wave = 1;
         this.enemiesCount = 0;
         this.maxEnemies = 10;
+        // NEW: Track how many enemies have been spawned in the current wave
+        this.enemiesSpawned = 0;
+        // NEW: Delay between waves (milliseconds)
+        this.waveDelay = 10000; // 10 seconds
+        this.waveCooldownEnd = 0; // Timestamp until which spawning is paused
         
         // Game phases: 'MAZE_BUILDING' or 'DEFENSE'
         this.currentPhase = 'MAZE_BUILDING';
@@ -41,6 +46,8 @@ export class GameState {
     
     addEnemy() {
         this.enemiesCount++;
+        // NEW: Increment how many enemies have been spawned this wave
+        this.enemiesSpawned++;
         this.updateHUD();
     }
     
@@ -50,6 +57,10 @@ export class GameState {
             this.wave++;
             this.enemiesCount = 0;
             this.maxEnemies = Math.floor(this.maxEnemies * 1.2); // 20% more enemies each wave
+            // NEW: Reset spawned counter for the new wave
+            this.enemiesSpawned = 0;
+            // NEW: Start wave cooldown timer
+            this.waveCooldownEnd = Date.now() + this.waveDelay;
             this.addMoney(50); // Wave completion bonus
             this.addScore(500);
         }
@@ -74,6 +85,16 @@ export class GameState {
     
     getMaxEnemies() {
         return this.maxEnemies;
+    }
+
+    // NEW: Returns true if still in cooldown period after a wave
+    isWaveCoolingDown() {
+        return Date.now() < this.waveCooldownEnd;
+    }
+
+    // NEW: Returns true if we can spawn an enemy (spawn limit + cooldown)
+    canSpawnMore() {
+        return !this.isWaveCoolingDown() && this.enemiesSpawned < this.maxEnemies;
     }
     
     canAfford(cost) {
@@ -126,7 +147,11 @@ export class GameState {
             score: this.score,
             wave: this.wave,
             enemiesCount: this.enemiesCount,
-            maxEnemies: this.maxEnemies
+            maxEnemies: this.maxEnemies,
+            // NEW: Persist enemiesSpawned so reloading mid-wave keeps correct state
+            enemiesSpawned: this.enemiesSpawned,
+            // NEW: Persist waveCooldownEnd for mid-wave delays
+            waveCooldownEnd: this.waveCooldownEnd
         };
         
         localStorage.setItem('towerDefenseGameState', JSON.stringify(saveData));
@@ -142,6 +167,10 @@ export class GameState {
             this.wave = data.wave;
             this.enemiesCount = data.enemiesCount;
             this.maxEnemies = data.maxEnemies;
+            // NEW: Restore enemiesSpawned (fallback to 0 for old saves)
+            this.enemiesSpawned = data.enemiesSpawned || 0;
+            // NEW: Restore cooldown timer
+            this.waveCooldownEnd = data.waveCooldownEnd || 0;
             this.updateHUD();
         }
     }

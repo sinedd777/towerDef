@@ -240,7 +240,7 @@ function animate() {
     const currentTime = Date.now();
     
     // Only spawn enemies during defense phase
-    if (gameState.isDefensePhase() && currentTime - lastEnemySpawn > enemySpawnInterval) {
+    if (gameState.isDefensePhase() && currentTime - lastEnemySpawn > enemySpawnInterval && gameState.canSpawnMore()) {
         const currentWave = gameState.getWave();
         
         // Calculate path considering all current obstacles
