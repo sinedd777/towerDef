@@ -69,11 +69,11 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Softer shadows
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+renderer.toneMappingExposure = 1.6; // Increased for brighter overall appearance
 
 // Enable depth testing and writing
 renderer.sortObjects = true;
-renderer.setClearColor(0x87ceeb, 1); // Sky blue background
+renderer.setClearColor(0x000000, 1); // Black background
 document.body.appendChild(renderer.domElement);
 
 // CSS2D renderer for labels
@@ -120,12 +120,12 @@ document.addEventListener('towersUpdated', (event) => {
     towerSelectionUI.updateTowerMenu();
 });
 
-// Enhanced lighting setup for 3D models
-const ambientLight = new THREE.AmbientLight(0x404040, 0.4); // Reduced for better contrast
+// Enhanced lighting setup for 3D models - much brighter for Kenney assets
+const ambientLight = new THREE.AmbientLight(0x606060, 0.8); // Increased for brighter overall lighting
 scene.add(ambientLight);
 
-// Main directional light (sun)
-const mainLight = new THREE.DirectionalLight(0xffffff, 1.0);
+// Main directional light (sun) - increased intensity
+const mainLight = new THREE.DirectionalLight(0xffffff, 1.4);
 mainLight.position.set(10, 15, 8);
 mainLight.castShadow = true;
 
@@ -143,13 +143,13 @@ mainLight.shadow.normalBias = 0.02;
 
 scene.add(mainLight);
 
-// Secondary fill light for softer shadows
-const fillLight = new THREE.DirectionalLight(0x87ceeb, 0.3); // Sky blue tint
+// Secondary fill light for softer shadows - increased intensity
+const fillLight = new THREE.DirectionalLight(0x4444ff, 0.3); // Subtle blue tint
 fillLight.position.set(-8, 8, -8);
 scene.add(fillLight);
 
-// Rim light for model definition
-const rimLight = new THREE.DirectionalLight(0xffd700, 0.2); // Golden rim light
+// Rim light for model definition - increased intensity
+const rimLight = new THREE.DirectionalLight(0xffd700, 0.4); // Golden rim light, brighter
 rimLight.position.set(0, 5, -10);
 scene.add(rimLight);
 

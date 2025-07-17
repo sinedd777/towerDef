@@ -35,40 +35,39 @@ export class Tower {
                 
                 // Store weapon reference for targeting rotation
                 // For area towers, no weapon rotation needed
-                if (this.type !== 'area') {
-                    // The weapon is typically the last or highest positioned child
-                    // Find the child with the highest Y position (weapon on top)
-                    this.weaponMesh = null;
-                    let highestY = -Infinity;
-                    
-                    towerModel.children.forEach(child => {
-                        if (child.position.y > highestY) {
-                            highestY = child.position.y;
-                            this.weaponMesh = child;
-                        }
-                    });
-                    
-                    // If we found a weapon, set up a separate rotation group
-                    if (this.weaponMesh) {
-                        // Create a rotation wrapper for the weapon
-                        this.weaponRotationGroup = new THREE.Group();
-                        
-                        // Store original weapon position
-                        const originalPosition = this.weaponMesh.position.clone();
-                        
-                        // Remove weapon from tower model and add to rotation group
-                        towerModel.remove(this.weaponMesh);
-                        this.weaponRotationGroup.add(this.weaponMesh);
-                        
-                        // Reset weapon position relative to rotation group
-                        this.weaponMesh.position.set(0, 0, 0);
-                        
-                        // Position the rotation group where the weapon was
-                        this.weaponRotationGroup.position.copy(originalPosition);
-                        
-                        // Add rotation group back to tower model
-                        towerModel.add(this.weaponRotationGroup);
+                // Setup weapon/crystal rotation for all tower types
+                // For area towers: crystal rotates when enemies in range (crystal = highest part)
+                // For other towers: weapon rotates to track enemies (weapon = highest part)
+                this.weaponMesh = null;
+                let highestY = -Infinity;
+                
+                towerModel.children.forEach(child => {
+                    if (child.position.y > highestY) {
+                        highestY = child.position.y;
+                        this.weaponMesh = child; // For area towers, this will be the crystal
                     }
+                });
+                
+                // If we found a weapon/crystal, set up a separate rotation group
+                if (this.weaponMesh) {
+                    // Create a rotation wrapper for the weapon/crystal
+                    this.weaponRotationGroup = new THREE.Group();
+                    
+                    // Store original weapon position
+                    const originalPosition = this.weaponMesh.position.clone();
+                    
+                    // Remove weapon from tower model and add to rotation group
+                    towerModel.remove(this.weaponMesh);
+                    this.weaponRotationGroup.add(this.weaponMesh);
+                    
+                    // Reset weapon position relative to rotation group
+                    this.weaponMesh.position.set(0, 0, 0);
+                    
+                    // Position the rotation group where the weapon was
+                    this.weaponRotationGroup.position.copy(originalPosition);
+                    
+                    // Add rotation group back to tower model
+                    towerModel.add(this.weaponRotationGroup);
                 }
             }
         }).catch((error) => {
@@ -149,7 +148,7 @@ export class Tower {
         
         this.currentTarget = closestEnemy;
         
-        // Rotate weapon towards target (except for area tower)
+        // Rotate weapon towards target (non-area towers)
         if (this.currentTarget && this.type !== 'area' && this.weaponRotationGroup) {
             const targetPos = this.currentTarget.getPosition();
             const direction = new THREE.Vector3().subVectors(targetPos, this.position);
@@ -158,6 +157,36 @@ export class Tower {
             
             const angle = Math.atan2(direction.x, direction.z);
             this.weaponRotationGroup.rotation.y = angle;
+        }
+        
+        // For area towers, rotate crystal when enemies are in range
+        if (this.type === 'area' && this.weaponRotationGroup) {
+            const hasEnemiesInRange = enemies.some(enemy => 
+                enemy.isAlive() && this.position.distanceTo(enemy.getPosition()) <= this.range
+            );
+            
+            if (hasEnemiesInRange) {
+                // Store animation state if not exists
+                if (this.crystalRotationSpeed === undefined) {
+                    this.crystalRotationSpeed = 0;
+                    this.targetRotationSpeed = 0.05; // Target rotation speed
+                }
+                
+                // Accelerate rotation when enemies are in range
+                this.crystalRotationSpeed += (this.targetRotationSpeed - this.crystalRotationSpeed) * 0.1;
+                this.weaponRotationGroup.rotation.y += this.crystalRotationSpeed;
+            } else {
+                // Decelerate when no enemies in range
+                if (this.crystalRotationSpeed !== undefined) {
+                    this.crystalRotationSpeed *= 0.95; // Gradual slowdown
+                    this.weaponRotationGroup.rotation.y += this.crystalRotationSpeed;
+                    
+                    // Stop rotation when speed is very low
+                    if (this.crystalRotationSpeed < 0.001) {
+                        this.crystalRotationSpeed = 0;
+                    }
+                }
+            }
         }
         
         return this.currentTarget;
@@ -320,12 +349,15 @@ export class Tower {
         
         // Ensure materials respond to lighting
         if (material.color) {
-            material.color.multiplyScalar(1.2); // Brighten colors slightly
+            // Area towers are too bright, use less enhancement
+            const colorMultiplier = this.type === 'area' ? 1.0 : 1.2;
+            material.color.multiplyScalar(colorMultiplier);
         }
         
-        // Add slight emissive glow for visibility
+        // Add slight emissive glow for visibility (less for area towers)
         if (!material.emissive) {
-            material.emissive = new THREE.Color(0x111111);
+            const emissiveColor = this.type === 'area' ? 0x050505 : 0x111111;
+            material.emissive = new THREE.Color(emissiveColor);
         }
         
         material.needsUpdate = true;

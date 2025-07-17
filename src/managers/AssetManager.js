@@ -134,20 +134,18 @@ export class AssetManager {
                 (gltf) => {
                     const model = gltf.scene;
                     
-                    // Setup shadows for all meshes
+                    // Setup shadows and enhance materials for all meshes
                     model.traverse((child) => {
                         if (child.isMesh) {
                             child.castShadow = true;
                             child.receiveShadow = true;
                             
-                            // Ensure materials have proper settings
+                            // Enhance materials for better visibility
                             if (child.material) {
                                 if (Array.isArray(child.material)) {
-                                    child.material.forEach(mat => {
-                                        mat.needsUpdate = true;
-                                    });
+                                    child.material.forEach(mat => this.enhanceMaterial(mat));
                                 } else {
-                                    child.material.needsUpdate = true;
+                                    this.enhanceMaterial(child.material);
                                 }
                             }
                         }
@@ -173,6 +171,30 @@ export class AssetManager {
         this.loadingPromises.set(assetId, loadingPromise);
         const cached = await loadingPromise;
         return cached.clone();
+    }
+
+    /**
+     * Enhance material properties for better visibility and lighting
+     */
+    enhanceMaterial(material) {
+        // Improve material properties for Kenney assets
+        material.roughness = Math.min(material.roughness || 0.5, 0.4); // Reduce roughness for more reflection
+        material.metalness = material.metalness || 0.1; // Slight metalness for better lighting
+        
+        // Brighten colors significantly for cartoon-style assets
+        if (material.color) {
+            material.color.multiplyScalar(1.3); // Brighten base colors
+        }
+        
+        // Add subtle emissive glow to make models more visible
+        if (!material.emissive) {
+            material.emissive = new THREE.Color(0x202020); // Subtle warm glow
+        } else {
+            material.emissive.multiplyScalar(1.2); // Enhance existing emissive
+        }
+        
+        // Ensure proper lighting response
+        material.needsUpdate = true;
     }
 
     /**
@@ -304,8 +326,16 @@ export class AssetManager {
                     break;
                     
                 case 'area':
-                    const areaModel = await this.loadAsset('towers', 'tower-round-crystals');
-                    group.add(areaModel);
+                    // Area tower has a static base and rotating crystal top
+                    const areaBase = await this.loadAsset('towers', 'tower-round-base');
+                    const areaBottom = await this.loadAsset('towers', 'tower-round-bottom-c');
+                    const areaCrystals = await this.loadAsset('towers', 'tower-round-crystals');
+                    
+                    group.add(areaBase);
+                    areaBottom.position.y = 0.2;
+                    group.add(areaBottom);
+                    areaCrystals.position.y = 0.6; // Position crystals on top
+                    group.add(areaCrystals);
                     break;
                     
                 default:

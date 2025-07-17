@@ -69,6 +69,8 @@ export class InputManager {
     }
 
     updatePreviewAppearance(gridX, gridZ) {
+        if (!this.selectedTowerData || !this.previewTower) return;
+        
         const isValid = this.isValidTowerPosition(gridX, gridZ);
         const canAfford = this.gameState.getMoney() >= this.selectedTowerData.cost;
         
