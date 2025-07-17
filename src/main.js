@@ -93,13 +93,19 @@ const enemyEndPosition = new THREE.Vector3(8, 0.1, 8);
 // Path visualization
 let pathLine = null;
 function updatePathVisualization(waypoints) {
+    // Remove existing path line
     if (pathLine) {
         scene.remove(pathLine);
+        pathLine = null;
     }
-    const pathGeometry = new THREE.BufferGeometry().setFromPoints(waypoints);
-    const pathMaterial = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 3 });
-    pathLine = new THREE.Line(pathGeometry, pathMaterial);
-    scene.add(pathLine);
+
+    // Only create new path line if waypoints exist
+    if (waypoints && waypoints.length > 0) {
+        const pathGeometry = new THREE.BufferGeometry().setFromPoints(waypoints);
+        const pathMaterial = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 3 });
+        pathLine = new THREE.Line(pathGeometry, pathMaterial);
+        scene.add(pathLine);
+    }
 }
 
 // Grid visualization (for tower placement)
@@ -139,6 +145,21 @@ function getAllObstacles() {
 function startDefensePhase() {
     console.log('Starting defense phase...');
     
+    // Calculate initial path
+    const obstacles = getAllObstacles();
+    const initialPath = pathfinding.findPath(
+        { x: enemyStartPosition.x, z: enemyStartPosition.z },
+        { x: enemyEndPosition.x, z: enemyEndPosition.z },
+        obstacles
+    );
+
+    // Check if there's a valid path before starting defense phase
+    if (!initialPath) {
+        console.error('No valid path exists from start to end! Cannot start defense phase.');
+        alert('Cannot start defense phase: No valid path exists from start to end. Please ensure there is a path through your maze.');
+        return;
+    }
+    
     // Transition game state
     gameState.startDefensePhase();
     
@@ -156,13 +177,7 @@ function startDefensePhase() {
     
     initializeTowerInput();
     
-    // Calculate initial path
-    const obstacles = getAllObstacles();
-    const initialPath = pathfinding.findPath(
-        { x: enemyStartPosition.x, z: enemyStartPosition.z },
-        { x: enemyEndPosition.x, z: enemyEndPosition.z },
-        obstacles
-    );
+    // Update path visualization with the valid path
     updatePathVisualization(initialPath);
     
     console.log('Defense phase started');
@@ -236,15 +251,24 @@ function animate() {
             obstacles
         );
         
-        // Update path visualization
-        updatePathVisualization(path);
-        
-        // Create enemy with calculated path
-        const enemy = new Enemy(path, currentWave);
-        enemies.push(enemy);
-        scene.add(enemy.mesh);
-        lastEnemySpawn = currentTime;
-        gameState.addEnemy();
+        // Only spawn enemy and update visualization if a valid path exists
+        if (path) {
+            // Update path visualization
+            updatePathVisualization(path);
+            
+            // Create enemy with calculated path
+            const enemy = new Enemy(path, currentWave);
+            enemies.push(enemy);
+            scene.add(enemy.mesh);
+            lastEnemySpawn = currentTime;
+            gameState.addEnemy();
+        } else {
+            // If no valid path exists, clear path visualization
+            if (pathLine) {
+                scene.remove(pathLine);
+                pathLine = null;
+            }
+        }
     }
     
     // Update enemies

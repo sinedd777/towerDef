@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Tower } from '../Tower.js';
 import { debugLog } from '../config/DebugConfig.js';
+import { Pathfinding } from '../Pathfinding.js';
 
 export class InputManager {
     constructor(scene, camera, renderer, gameState, ground, pathWaypoints, towers) {
@@ -211,7 +212,31 @@ export class InputManager {
             }
         }
         
+        // Check if placing tower here would block all possible paths
+        const tempObstacles = [...this.getAllObstacles(), { x, z }];
+        const pathfinding = new Pathfinding();
+        const path = pathfinding.findPath(
+            { x: -8, z: -8 }, // Enemy start position
+            { x: 8, z: 8 },   // Enemy end position
+            tempObstacles
+        );
+        
+        // If no valid path exists with this tower placement, it's not valid
+        if (!path) {
+            return false;
+        }
+        
         return true;
+    }
+    
+    getAllObstacles() {
+        const obstacles = [];
+        // Add existing towers
+        for (const tower of this.towers) {
+            const pos = tower.getPosition();
+            obstacles.push({ x: pos.x, z: pos.z });
+        }
+        return obstacles;
     }
 
     // Tower selection management
