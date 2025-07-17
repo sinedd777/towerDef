@@ -1,23 +1,35 @@
 import * as THREE from 'three';
+import { assetManager } from './managers/AssetManager.js';
 
 export class Projectile {
-    constructor(startPosition, target, damage, splashRadius = 0) {
+    constructor(startPosition, target, damage, splashRadius = 0, towerType = 'basic') {
         this.target = target;
         this.damage = damage;
         this.splashRadius = splashRadius;
+        this.towerType = towerType;
         this.speed = 8.0; // units per second
         this.maxDistance = 15.0; // Maximum travel distance before removal
         this.traveledDistance = 0;
+        this.isModelLoaded = false;
         
-        // Create projectile mesh
-        const geometry = new THREE.SphereGeometry(0.1, 6, 4);
-        const material = new THREE.MeshBasicMaterial({ 
-            color: this.splashRadius > 0 ? 0xff00ff : 0xffff00,
-            transparent: true,
-            opacity: 0.8
-        });
-        this.mesh = new THREE.Mesh(geometry, material);
+        // Create projectile mesh as a group
+        this.mesh = new THREE.Group();
         this.mesh.position.copy(startPosition);
+        
+        // Load weapon-specific projectile model
+        this.loadProjectileModel(towerType).then((projectileModel) => {
+            if (projectileModel) {
+                // Scale down the projectile for appropriate size
+                const scale = 0.6;
+                projectileModel.scale.set(scale, scale, scale);
+                
+                this.mesh.add(projectileModel);
+                this.isModelLoaded = true;
+            }
+        }).catch((error) => {
+            console.error('Failed to load projectile model, using fallback:', error);
+            this.createFallbackMesh();
+        });
         
         // Store starting position for distance calculation
         this.startPosition = startPosition.clone();
@@ -104,9 +116,35 @@ export class Projectile {
         // Update traveled distance
         this.traveledDistance = this.mesh.position.distanceTo(this.startPosition);
         
-        // Rotate projectile for visual effect
-        this.mesh.rotation.x += deltaTime * 5;
-        this.mesh.rotation.y += deltaTime * 3;
+        // Orient projectile in direction of travel if model is loaded
+        if (this.isModelLoaded && this.mesh.children.length > 0) {
+            // Calculate orientation based on direction
+            const targetDirection = this.direction.clone().normalize();
+            
+            // Different orientation based on projectile type
+            switch (this.towerType) {
+                case 'sniper':
+                    // Arrows point forward
+                    this.mesh.lookAt(this.mesh.position.clone().add(targetDirection));
+                    break;
+                case 'area':
+                    // Boulders tumble
+                    this.mesh.rotation.x += deltaTime * 4;
+                    this.mesh.rotation.z += deltaTime * 3;
+                    break;
+                case 'basic':
+                case 'rapid':
+                default:
+                    // Bullets spin along travel axis
+                    this.mesh.lookAt(this.mesh.position.clone().add(targetDirection));
+                    this.mesh.rotateZ(deltaTime * 10);
+                    break;
+            }
+        } else {
+            // Fallback rotation for basic spheres
+            this.mesh.rotation.x += deltaTime * 5;
+            this.mesh.rotation.y += deltaTime * 3;
+        }
     }
     
     hasHitTarget() {
@@ -180,5 +218,119 @@ export class Projectile {
         
         animate();
         return impact;
+    }
+    
+    async loadProjectileModel(towerType) {
+        try {
+            const projectileModel = await assetManager.getProjectileModel(towerType);
+            return projectileModel;
+        } catch (error) {
+            console.error('Failed to load projectile model for tower type', towerType, ':', error);
+            return null;
+        }
+    }
+    
+    createFallbackMesh() {
+        // Create fallback sphere geometry if 3D model loading fails
+        console.warn('Using fallback geometry for projectile');
+        
+        const geometry = new THREE.SphereGeometry(0.1, 6, 4);
+        const material = new THREE.MeshBasicMaterial({ 
+            color: this.splashRadius > 0 ? 0xff00ff : 0xffff00,
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        const fallbackMesh = new THREE.Mesh(geometry, material);
+        
+        // Clear the group and add fallback mesh
+        this.mesh.clear();
+        this.mesh.add(fallbackMesh);
+        this.isModelLoaded = true;
+    }
+    
+    reset(startPosition, target, damage, splashRadius = 0, towerType = 'basic') {
+        // Reset all properties for object pooling
+        this.target = target;
+        this.damage = damage;
+        this.splashRadius = splashRadius;
+        this.towerType = towerType;
+        this.traveledDistance = 0;
+        
+        // Reset position and direction
+        this.mesh.position.copy(startPosition);
+        this.startPosition = startPosition.clone();
+        this.updateDirection();
+        
+        // Reset trail points
+        this.trailPoints = [];
+        
+        // Reset rotation
+        this.mesh.rotation.set(0, 0, 0);
+        
+        // If the model type changed, reload the appropriate model
+        if (!this.isModelLoaded || this.lastTowerType !== towerType) {
+            this.lastTowerType = towerType;
+            this.loadProjectileModel(towerType).then((projectileModel) => {
+                if (projectileModel) {
+                    // Clear existing model and add new one
+                    this.mesh.clear();
+                    
+                    const scale = 0.6;
+                    projectileModel.scale.set(scale, scale, scale);
+                    this.mesh.add(projectileModel);
+                    this.isModelLoaded = true;
+                    
+                    // Re-add trail if it exists
+                    if (this.trail) {
+                        this.mesh.add(this.trail);
+                    }
+                }
+            }).catch(() => {
+                this.createFallbackMesh();
+            });
+        }
+    }
+    
+    cleanup() {
+        // Reset for pooling without disposing geometry/materials
+        this.target = null;
+        this.traveledDistance = 0;
+        this.trailPoints = [];
+        this.mesh.position.set(0, 0, 0);
+        this.mesh.rotation.set(0, 0, 0);
+        
+        // Reset trail geometry
+        if (this.trail && this.trail.geometry) {
+            const positions = this.trail.geometry.attributes.position.array;
+            positions.fill(0);
+            this.trail.geometry.attributes.position.needsUpdate = true;
+        }
+    }
+    
+    dispose() {
+        // Complete disposal for memory cleanup
+        if (this.trail) {
+            if (this.trail.geometry) this.trail.geometry.dispose();
+            if (this.trail.material) this.trail.material.dispose();
+            this.mesh.remove(this.trail);
+            this.trail = null;
+        }
+        
+        // Dispose of mesh children
+        this.mesh.children.forEach(child => {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+                if (Array.isArray(child.material)) {
+                    child.material.forEach(mat => mat.dispose());
+                } else {
+                    child.material.dispose();
+                }
+            }
+        });
+        
+        this.mesh.clear();
+        this.target = null;
+        this.trailPoints = [];
     }
 } 

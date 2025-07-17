@@ -283,11 +283,26 @@ export class InputManager {
         // Create preview tower using the Tower class
         const tower = new Tower(0, 1.0, 0, towerData.id);
         
-        // Make preview tower transparent
-        tower.mesh.material.transparent = true;
-        tower.mesh.material.opacity = 0.5;
-        tower.rangeIndicator.material.transparent = true;
-        tower.rangeIndicator.material.opacity = 0.2;
+        // Make preview tower transparent - traverse all materials in the group
+        tower.mesh.traverse((child) => {
+            if (child.isMesh && child.material) {
+                if (Array.isArray(child.material)) {
+                    child.material.forEach(mat => {
+                        mat.transparent = true;
+                        mat.opacity = 0.5;
+                    });
+                } else {
+                    child.material.transparent = true;
+                    child.material.opacity = 0.5;
+                }
+            }
+        });
+        
+        // Make range indicator transparent
+        if (tower.rangeIndicator && tower.rangeIndicator.material) {
+            tower.rangeIndicator.material.transparent = true;
+            tower.rangeIndicator.material.opacity = 0.2;
+        }
         
         return tower;
     }

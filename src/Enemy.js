@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import { loadTexture } from './utils/textureLoader.js';
+import { assetManager } from './managers/AssetManager.js';
+
+// Preload texture (fallback for basic mode)
+const ENEMY_TEX = loadTexture('https://threejs.org/examples/textures/planets/jupiter.jpg');
 
 export class Enemy {
     constructor(waypoints, wave = 1) {
@@ -24,37 +29,22 @@ export class Enemy {
         this.activeEffects = new Map();
         this.baseDamageMultiplier = 1.0;
         
-        // Create enemy mesh with enhanced visual feedback
-        const MAX_SIZE_MULTIPLIER = 2.5;
-        const sizeMultiplier = Math.min(
-            MAX_SIZE_MULTIPLIER,
-            1 + (wave - 1) * 0.1
-        );
-        const size = 0.3 * sizeMultiplier;
-        
-        const geometry = new THREE.SphereGeometry(size, 8, 6);
-        const material = new THREE.MeshPhongMaterial({ 
-            color: 0xff4444,
-            emissive: new THREE.Color(0xff0000),
-            emissiveIntensity: Math.min(0.5, 0.1 * (wave - 1)),
-            shininess: Math.min(100, wave * 10)
-        });
-        
-        this.mesh = new THREE.Mesh(geometry, material);
+        // Create enemy mesh with UFO model
+        this.mesh = new THREE.Group();
         this.mesh.castShadow = true;
+        this.isModelLoaded = false;
         
-        // Add wave indicator effects
-        if (wave > 1) {
-            const ringGeometry = new THREE.RingGeometry(size * 1.2, size * 1.4, 16);
-            const ringMaterial = new THREE.MeshBasicMaterial({ 
-                color: 0xff0000,
-                transparent: true,
-                opacity: 0.3 + Math.min(0.5, (wave - 1) * 0.1)
-            });
-            const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-            ring.rotation.x = -Math.PI / 2;
-            this.mesh.add(ring);
-        }
+        // Load the appropriate UFO model based on wave
+        this.loadUFOModel(wave).then((ufoModel) => {
+            if (ufoModel) {
+                // Keep UFOs at consistent size regardless of wave
+                this.mesh.add(ufoModel);
+                this.isModelLoaded = true;
+            }
+        }).catch((error) => {
+            console.error('Failed to load UFO model, using fallback:', error);
+            this.createFallbackMesh(wave);
+        });
 
         // Create debug label
         const debugDiv = document.createElement('div');
@@ -126,6 +116,16 @@ export class Enemy {
             } else {
                 this.calculateDirection();
             }
+        }
+        
+        // Add UFO rotation animation if model is loaded
+        if (this.isModelLoaded && this.mesh.children.length > 0) {
+            // Rotate the UFO around Y axis for floating effect
+            this.mesh.rotation.y += 0.02;
+            
+            // Add subtle bobbing motion
+            const time = Date.now() * 0.001;
+            this.mesh.position.y = 0.1 + Math.sin(time * 2) * 0.05;
         }
         
         // Update debug info
@@ -235,12 +235,7 @@ export class Enemy {
         this.updateDebugInfo();
         
         // Visual feedback for damage
-        this.mesh.material.color.setHex(0xff0000);
-        setTimeout(() => {
-            if (this.mesh.material) {
-                this.mesh.material.color.setHex(0xff4444);
-            }
-        }, 100);
+        this.showDamageEffect();
         
         return this.health <= 0;
     }
@@ -307,5 +302,66 @@ export class Enemy {
         
         // Clear all status effects
         this.activeEffects.clear();
+    }
+    
+    async loadUFOModel(wave) {
+        try {
+            const ufoModel = await assetManager.getEnemyModel(wave);
+            return ufoModel;
+        } catch (error) {
+            console.error('Failed to load UFO model for wave', wave, ':', error);
+            return null;
+        }
+    }
+    
+    createFallbackMesh(wave) {
+        // Create fallback sphere geometry if 3D model loading fails
+        console.warn('Using fallback geometry for enemy');
+        
+        // Consistent size across all waves
+        const size = 0.3;
+        
+        const geometry = new THREE.SphereGeometry(size, 8, 6);
+        const material = new THREE.MeshPhongMaterial({ 
+            map: ENEMY_TEX,
+            color: 0xffffff
+        });
+        
+        const fallbackMesh = new THREE.Mesh(geometry, material);
+        fallbackMesh.castShadow = true;
+        
+        // Clear the group and add fallback mesh
+        this.mesh.clear();
+        this.mesh.add(fallbackMesh);
+        this.isModelLoaded = true;
+    }
+    
+    showDamageEffect() {
+        // Visual feedback for damage on 3D models
+        this.mesh.traverse((child) => {
+            if (child.isMesh && child.material) {
+                const originalColor = child.material.color ? child.material.color.clone() : new THREE.Color(0xffffff);
+                
+                // Flash red
+                if (Array.isArray(child.material)) {
+                    child.material.forEach(mat => {
+                        if (mat.color) mat.color.setHex(0xff0000);
+                    });
+                } else {
+                    if (child.material.color) child.material.color.setHex(0xff0000);
+                }
+                
+                // Restore original color after delay
+                setTimeout(() => {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach(mat => {
+                            if (mat.color) mat.color.copy(originalColor);
+                        });
+                    } else {
+                        if (child.material.color) child.material.color.copy(originalColor);
+                    }
+                }, 150);
+            }
+        });
     }
 } 

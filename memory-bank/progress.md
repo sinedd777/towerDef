@@ -45,16 +45,29 @@
 
 ## In Progress Features 🚧
 
-### Visual Effects
-- [ ] Particle effects for explosions
-- [ ] Death animations
-- [ ] Tower attack effects
-- [ ] Enemy hit feedback
+### Visual Effects ✅
+- [x] Particle effects for explosions
+- [x] Death animations with energy dispersal
+- [x] Tower attack effects with muzzle flashes
+- [x] Enemy hit feedback with impact sparks
+- [x] Environmental object animations
 
 ### Audio
 - [ ] Sound effects
 - [ ] Background music
 - [ ] UI sounds
+
+### 3D Asset Integration ✅
+- [x] GLTFLoader and AssetManager system
+- [x] Professional loading screen with progress tracking
+- [x] UFO enemy models with wave-based progression
+- [x] Modular tower system (base + parts + weapons)
+- [x] Weapon-specific projectile models
+- [x] Environmental details and decorations
+- [x] Enhanced lighting with multiple light sources
+- [x] Soft shadows and tone mapping
+- [x] Object pooling for performance optimization
+- [x] Complete visual upgrade from basic geometries
 
 ### Game Features
 - [ ] Tower upgrades
@@ -87,6 +100,16 @@
 - Tower range preview could be clearer
 - Need better visual feedback for enemy damage
 - Some UI elements need better positioning
+
+## Recently Fixed Issues ✅
+
+### Technical Issues (Resolved)
+- [x] Asset loading errors due to incorrect file paths
+- [x] GLB files not accessible by Vite dev server  
+- [x] Three.js deprecation warning for outputEncoding
+- [x] Function scope error with animate function
+- [x] MIME type issues with model files
+- [x] Static asset serving configuration
 
 ## Next Milestone Goals 🎯
 

@@ -11,13 +11,69 @@ import { Pathfinding } from './Pathfinding.js';
 import { TowerSelectionUI } from './ui/TowerSelectionUI.js';
 import { TOWER_TYPES } from './TowerTypes.js';
 import { loadTexture } from './utils/textureLoader.js';
+import { assetManager } from './managers/AssetManager.js';
+import { LoadingScreen } from './ui/LoadingScreen.js';
+import { EnvironmentManager } from './managers/EnvironmentManager.js';
+import { objectPool } from './managers/ObjectPool.js';
+import { ParticleSystem } from './effects/ParticleSystem.js';
 
+// Initialize loading screen
+const loadingScreen = new LoadingScreen();
+loadingScreen.show();
+
+// Preload all assets before starting the game
+async function initializeGame() {
+    try {
+        loadingScreen.setStatus('Loading 3D models...');
+        
+        // Preload essential assets
+        await assetManager.preloadEssentialAssets((loaded, total, currentAsset) => {
+            loadingScreen.updateProgress(loaded, total, currentAsset);
+        });
+        
+        loadingScreen.setStatus('Initializing game systems...');
+        loadingScreen.updateProgress(100, 100, 'Complete!');
+        
+        // Small delay to show completion
+        setTimeout(() => {
+            loadingScreen.hide();
+            startGame();
+        }, 500);
+        
+    } catch (error) {
+        console.error('Failed to load game assets:', error);
+        loadingScreen.setStatus('Failed to load game assets. Please refresh the page.');
+    }
+}
+
+// Start the actual game after assets are loaded
+function startGame() {
+    initializeGameSystems();
+}
+
+// Initialize all game systems
+function initializeGameSystems() {
 // Scene setup
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ 
+    antialias: true,
+    alpha: false,
+    powerPreference: "high-performance"
+});
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+// Enhanced shadow and rendering settings
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Softer shadows
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+
+// Enable depth testing and writing
+renderer.sortObjects = true;
+renderer.setClearColor(0x87ceeb, 1); // Sky blue background
 document.body.appendChild(renderer.domElement);
 
 // CSS2D renderer for labels
@@ -64,16 +120,47 @@ document.addEventListener('towersUpdated', (event) => {
     towerSelectionUI.updateTowerMenu();
 });
 
-// Lighting
-const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+// Enhanced lighting setup for 3D models
+const ambientLight = new THREE.AmbientLight(0x404040, 0.4); // Reduced for better contrast
 scene.add(ambientLight);
 
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-directionalLight.position.set(5, 10, 5);
-directionalLight.castShadow = true;
-directionalLight.shadow.mapSize.width = 2048;
-directionalLight.shadow.mapSize.height = 2048;
-scene.add(directionalLight);
+// Main directional light (sun)
+const mainLight = new THREE.DirectionalLight(0xffffff, 1.0);
+mainLight.position.set(10, 15, 8);
+mainLight.castShadow = true;
+
+// Enhanced shadow settings
+mainLight.shadow.mapSize.width = 4096;
+mainLight.shadow.mapSize.height = 4096;
+mainLight.shadow.camera.near = 0.5;
+mainLight.shadow.camera.far = 50;
+mainLight.shadow.camera.left = -25;
+mainLight.shadow.camera.right = 25;
+mainLight.shadow.camera.top = 25;
+mainLight.shadow.camera.bottom = -25;
+mainLight.shadow.bias = -0.0001;
+mainLight.shadow.normalBias = 0.02;
+
+scene.add(mainLight);
+
+// Secondary fill light for softer shadows
+const fillLight = new THREE.DirectionalLight(0x87ceeb, 0.3); // Sky blue tint
+fillLight.position.set(-8, 8, -8);
+scene.add(fillLight);
+
+// Rim light for model definition
+const rimLight = new THREE.DirectionalLight(0xffd700, 0.2); // Golden rim light
+rimLight.position.set(0, 5, -10);
+scene.add(rimLight);
+
+// Point light for dynamic illumination near spawn points
+const spawnLight = new THREE.PointLight(0x00ff00, 0.5, 10);
+spawnLight.position.set(-8, 2, -8); // Near enemy spawn
+scene.add(spawnLight);
+
+const endLight = new THREE.PointLight(0xff0000, 0.5, 10);
+endLight.position.set(8, 2, 8); // Near enemy end
+scene.add(endLight);
 
 // Ground plane
 const groundGeometry = new THREE.PlaneGeometry(20, 20);
@@ -129,7 +216,12 @@ scene.add(gridHelper);
 // Arrays to hold game objects
 const enemies = [];
 const towers = [];
-const projectiles = [];
+
+// Environment manager
+const environmentManager = new EnvironmentManager(scene, 20);
+
+// Particle system for visual effects
+const particleSystem = new ParticleSystem(scene);
 
 // Enemy spawning
 let lastEnemySpawn = 0;
@@ -190,6 +282,9 @@ function startDefensePhase() {
     
     // Update path visualization with the valid path
     updatePathVisualization(initialPath);
+    
+    // Initialize environment with obstacles and spawn points
+    environmentManager.initializeEnvironment(obstacles, enemyStartPosition, enemyEndPosition);
     
     console.log('Defense phase started');
 }
@@ -346,16 +441,16 @@ function animate() {
             if (target && tower.canShoot()) {
                 const projectile = tower.shoot(target);
                 if (projectile) {
-                    projectiles.push(projectile);
                     scene.add(projectile.mesh);
                 }
             }
         }
     }
     
-    // Update projectiles
-    for (let i = projectiles.length - 1; i >= 0; i--) {
-        const projectile = projectiles[i];
+    // Update projectiles using object pool
+    const activeProjectiles = objectPool.getActiveProjectiles();
+    for (let i = activeProjectiles.length - 1; i >= 0; i--) {
+        const projectile = activeProjectiles[i];
         projectile.update();
         
         const hit = projectile.hasHitTarget();
@@ -371,6 +466,11 @@ function animate() {
                     if (isDead) {
                         const index = enemies.indexOf(target);
                         if (index !== -1) {
+                            // Create death effect before cleanup
+                            const enemyPos = target.getPosition();
+                            const enemySize = 1.0; // Consistent particle effect size
+                            particleSystem.createDeathEffect(enemyPos, enemySize);
+                            
                             target.cleanup();
                             scene.remove(target.mesh);
                             enemies.splice(index, 1);
@@ -388,6 +488,11 @@ function animate() {
                         if (isDead) {
                             const index = enemies.indexOf(splashTarget);
                             if (index !== -1) {
+                                // Create death effect for splash target
+                                const splashPos = splashTarget.getPosition();
+                                const splashSize = 0.8; // Consistent smaller particle effect for splash
+                                particleSystem.createDeathEffect(splashPos, splashSize);
+                                
                                 splashTarget.cleanup();
                                 scene.remove(splashTarget.mesh);
                                 enemies.splice(index, 1);
@@ -399,21 +504,26 @@ function animate() {
                     }
                 }
                 
-                // Create impact effect
+                // Create impact effect and sparks
                 const impact = projectile.createImpactEffect();
                 if (impact) {
                     scene.add(impact);
                 }
+                
+                // Create impact sparks
+                const impactPos = projectile.mesh.position.clone();
+                const impactDirection = projectile.direction.clone().negate();
+                particleSystem.createImpactSparks(impactPos, impactDirection, projectile.towerType);
             }
             
-            // Clean up projectile
-            if (projectile.trail) {
-                projectile.mesh.remove(projectile.trail);
-            }
+            // Remove from scene and return to pool
             scene.remove(projectile.mesh);
-            projectiles.splice(i, 1);
+            objectPool.returnProjectile(projectile);
         }
     }
+    
+    // Update environment animations
+    environmentManager.update();
     
     // Update renderers
     renderer.render(scene, camera);
@@ -422,4 +532,9 @@ function animate() {
     }
 }
 
-animate(); 
+// Start the game loop
+animate();
+} // Close initializeGameSystems function
+
+// Start the initialization process
+initializeGame(); 

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { Projectile } from './Projectile.js';
 import { TOWER_TYPES } from './TowerTypes.js';
+import { assetManager } from './managers/AssetManager.js';
+import { objectPool } from './managers/ObjectPool.js';
 
 export class Tower {
     constructor(x, y, z, type = 'basic') {
@@ -13,17 +15,66 @@ export class Tower {
         this.type = type;
         this.lastShotTime = 0;
         
-        // Create tower mesh
-        this.mesh = new THREE.Mesh(
-            towerConfig.model.base.geometry,
-            towerConfig.model.base.material.clone()
-        );
-        // Adjust vertical position so tower base sits on top of block (block top ≈ 0.5)
-        // The cylinder geometry is centered, so half its height is 0.5 ⇒ bottom = center - 0.5
-        // To align bottom with 0.5, set mesh center y to 1.0
-        this.position.y = 1.0; // Override y to ensure correct placement
-        this.mesh.position.copy(this.position);
+        // Create tower mesh as a group
+        this.mesh = new THREE.Group();
         this.mesh.castShadow = true;
+        this.isModelLoaded = false;
+        
+        // Adjust vertical position so tower base sits on top of block (block top ≈ 0.5)
+        this.position.y = 0.5; // Place tower directly on block surface
+        this.mesh.position.copy(this.position);
+        
+        // Load the modular tower model
+        this.loadTowerModel(type).then((towerModel) => {
+            if (towerModel) {
+                // Enhance model materials for better appearance
+                this.enhanceModelMaterials(towerModel);
+                
+                this.mesh.add(towerModel);
+                this.isModelLoaded = true;
+                
+                // Store weapon reference for targeting rotation
+                // For area towers, no weapon rotation needed
+                if (this.type !== 'area') {
+                    // The weapon is typically the last or highest positioned child
+                    // Find the child with the highest Y position (weapon on top)
+                    this.weaponMesh = null;
+                    let highestY = -Infinity;
+                    
+                    towerModel.children.forEach(child => {
+                        if (child.position.y > highestY) {
+                            highestY = child.position.y;
+                            this.weaponMesh = child;
+                        }
+                    });
+                    
+                    // If we found a weapon, set up a separate rotation group
+                    if (this.weaponMesh) {
+                        // Create a rotation wrapper for the weapon
+                        this.weaponRotationGroup = new THREE.Group();
+                        
+                        // Store original weapon position
+                        const originalPosition = this.weaponMesh.position.clone();
+                        
+                        // Remove weapon from tower model and add to rotation group
+                        towerModel.remove(this.weaponMesh);
+                        this.weaponRotationGroup.add(this.weaponMesh);
+                        
+                        // Reset weapon position relative to rotation group
+                        this.weaponMesh.position.set(0, 0, 0);
+                        
+                        // Position the rotation group where the weapon was
+                        this.weaponRotationGroup.position.copy(originalPosition);
+                        
+                        // Add rotation group back to tower model
+                        towerModel.add(this.weaponRotationGroup);
+                    }
+                }
+            }
+        }).catch((error) => {
+            console.error('Failed to load tower model, using fallback:', error);
+            this.createFallbackMesh(towerConfig);
+        });
         
         // Create range indicator
         const rangeGeometry = new THREE.RingGeometry(this.range - 0.1, this.range, 32);
@@ -40,15 +91,9 @@ export class Tower {
         this.rangeIndicator.position.set(0, groundOffset, 0);
         this.mesh.add(this.rangeIndicator);
         
-        // Create barrel (except for area tower)
-        if (this.type !== 'area') {
-            this.barrel = new THREE.Mesh(
-                towerConfig.model.barrel.geometry,
-                towerConfig.model.barrel.material.clone()
-            );
-            this.barrel.position.set(0, 0.4, 0);
-            this.mesh.add(this.barrel);
-        }
+        // Weapon mesh will be part of the loaded tower model
+        this.weaponMesh = null;
+        this.weaponRotationGroup = null;
         
         // For area tower, create pulse effect
         if (this.type === 'area') {
@@ -104,15 +149,15 @@ export class Tower {
         
         this.currentTarget = closestEnemy;
         
-        // Rotate barrel towards target (except for area tower)
-        if (this.currentTarget && this.type !== 'area') {
+        // Rotate weapon towards target (except for area tower)
+        if (this.currentTarget && this.type !== 'area' && this.weaponRotationGroup) {
             const targetPos = this.currentTarget.getPosition();
             const direction = new THREE.Vector3().subVectors(targetPos, this.position);
-            direction.y = 0; // Keep barrel horizontal
+            direction.y = 0; // Keep weapon horizontal
             direction.normalize();
             
             const angle = Math.atan2(direction.x, direction.z);
-            this.barrel.rotation.y = angle;
+            this.weaponRotationGroup.rotation.y = angle;
         }
         
         return this.currentTarget;
@@ -165,16 +210,33 @@ export class Tower {
         }
         
         // Regular projectile for other towers
-        const barrelTip = new THREE.Vector3(0, 0.8, 0);
-        const worldBarrelTip = barrelTip.clone();
-        this.mesh.localToWorld(worldBarrelTip);
+        let worldBarrelTip;
         
-        // Create projectile
-        const projectile = new Projectile(
+        if (this.weaponRotationGroup) {
+            // Calculate projectile spawn from weapon position
+            const weaponWorldPosition = new THREE.Vector3();
+            this.weaponRotationGroup.getWorldPosition(weaponWorldPosition);
+            
+            // Add a small forward offset in the direction the weapon is facing
+            const weaponDirection = new THREE.Vector3(0, 0, 1);
+            weaponDirection.applyQuaternion(this.weaponRotationGroup.getWorldQuaternion(new THREE.Quaternion()));
+            weaponDirection.multiplyScalar(0.3); // Forward offset
+            
+            worldBarrelTip = weaponWorldPosition.add(weaponDirection);
+        } else {
+            // Fallback to fixed position for area towers or if weapon not found
+            const barrelTip = new THREE.Vector3(0, 0.3, 0);
+            worldBarrelTip = barrelTip.clone();
+            this.mesh.localToWorld(worldBarrelTip);
+        }
+        
+        // Create projectile using object pool
+        const projectile = objectPool.getProjectile(
             worldBarrelTip,
             target,
             this.damage,
-            this.type === 'area' ? this.range : 0
+            this.type === 'area' ? this.range : 0,
+            this.type
         );
         
         return projectile;
@@ -194,5 +256,78 @@ export class Tower {
     
     hideRangeIndicator() {
         this.rangeIndicator.visible = false;
+    }
+    
+    async loadTowerModel(towerType) {
+        try {
+            const towerModel = await assetManager.createTowerModel(towerType);
+            return towerModel;
+        } catch (error) {
+            console.error('Failed to load tower model for type', towerType, ':', error);
+            return null;
+        }
+    }
+    
+    createFallbackMesh(towerConfig) {
+        // Create fallback cylinder geometry if 3D model loading fails
+        console.warn('Using fallback geometry for tower');
+        
+        const fallbackMesh = new THREE.Mesh(
+            towerConfig.model.base.geometry,
+            towerConfig.model.base.material.clone()
+        );
+        fallbackMesh.castShadow = true;
+        
+        // Create barrel for non-area towers
+        if (this.type !== 'area') {
+            this.weaponMesh = new THREE.Mesh(
+                towerConfig.model.barrel.geometry,
+                towerConfig.model.barrel.material.clone()
+            );
+            
+            // Create rotation group for weapon
+            this.weaponRotationGroup = new THREE.Group();
+            this.weaponRotationGroup.position.set(0, 0.4, 0);
+            this.weaponRotationGroup.add(this.weaponMesh);
+            fallbackMesh.add(this.weaponRotationGroup);
+        }
+        
+        // Clear the group and add fallback mesh
+        this.mesh.clear();
+        this.mesh.add(fallbackMesh);
+        this.isModelLoaded = true;
+    }
+    
+    enhanceModelMaterials(model) {
+        // Enhance materials for better appearance
+        model.traverse((child) => {
+            if (child.isMesh && child.material) {
+                if (Array.isArray(child.material)) {
+                    child.material.forEach(mat => {
+                        this.enhanceSingleMaterial(mat);
+                    });
+                } else {
+                    this.enhanceSingleMaterial(child.material);
+                }
+            }
+        });
+    }
+    
+    enhanceSingleMaterial(material) {
+        // Improve material properties for better lighting
+        material.roughness = 0.3;
+        material.metalness = 0.1;
+        
+        // Ensure materials respond to lighting
+        if (material.color) {
+            material.color.multiplyScalar(1.2); // Brighten colors slightly
+        }
+        
+        // Add slight emissive glow for visibility
+        if (!material.emissive) {
+            material.emissive = new THREE.Color(0x111111);
+        }
+        
+        material.needsUpdate = true;
     }
 } 
