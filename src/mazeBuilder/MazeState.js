@@ -30,8 +30,8 @@ export class MazeState {
             this.gridState[z] = {};
         }
         
-        // Generate initial hand of shapes
-        this.currentShapeHand = generateShapeHand(4);
+        // Generate initial hand of shapes (increased to 10)
+        this.currentShapeHand = generateShapeHand(10);
         
         // Mark path areas as restricted
         this.markPathAreas();
@@ -48,9 +48,11 @@ export class MazeState {
             for (let z = -9; z <= -7; z++) {
                 const gridX = x + halfGrid;
                 const gridZ = z + halfGrid;
-                if (gridZ >= 0 && gridZ < this.gridSize && gridX >= 0 && gridX < this.gridSize) {
-                    if (!this.gridState[gridZ]) this.gridState[gridZ] = {};
-                    this.gridState[gridZ][gridX] = { restricted: true };
+                if (gridX >= 0 && gridX < this.gridSize && gridZ >= 0 && gridZ < this.gridSize) {
+                    if (!this.gridState[gridZ][gridX]) {
+                        this.gridState[gridZ][gridX] = {};
+                    }
+                    this.gridState[gridZ][gridX].restricted = true;
                 }
             }
         }
@@ -60,34 +62,89 @@ export class MazeState {
             for (let z = 7; z <= 9; z++) {
                 const gridX = x + halfGrid;
                 const gridZ = z + halfGrid;
-                if (gridZ >= 0 && gridZ < this.gridSize && gridX >= 0 && gridX < this.gridSize) {
-                    if (!this.gridState[gridZ]) this.gridState[gridZ] = {};
-                    this.gridState[gridZ][gridX] = { restricted: true };
+                if (gridX >= 0 && gridX < this.gridSize && gridZ >= 0 && gridZ < this.gridSize) {
+                    if (!this.gridState[gridZ][gridX]) {
+                        this.gridState[gridZ][gridX] = {};
+                    }
+                    this.gridState[gridZ][gridX].restricted = true;
                 }
             }
+        }
+
+        // Mark edge boundaries as restricted (1-unit wide border)
+        for (let i = 0; i < this.gridSize; i++) {
+            // Top edge
+            if (!this.gridState[0][i]) this.gridState[0][i] = {};
+            this.gridState[0][i].restricted = true;
+            
+            // Bottom edge
+            if (!this.gridState[this.gridSize - 1][i]) this.gridState[this.gridSize - 1][i] = {};
+            this.gridState[this.gridSize - 1][i].restricted = true;
+            
+            // Left edge
+            if (!this.gridState[i][0]) this.gridState[i][0] = {};
+            this.gridState[i][0].restricted = true;
+            
+            // Right edge
+            if (!this.gridState[i][this.gridSize - 1]) this.gridState[i][this.gridSize - 1] = {};
+            this.gridState[i][this.gridSize - 1].restricted = true;
         }
     }
 
     createRestrictedAreaMarkers() {
-        // Create markers for start area (2x2)
+        // Clear existing markers
+        this.restrictedAreaMarkers.forEach(marker => this.scene.remove(marker));
+        this.restrictedAreaMarkers = [];
+
+        // Create markers for start and end areas
         const startMarker = this.createAreaMarker(
             this.pathStartArea.x,
             this.pathStartArea.z,
             this.pathStartArea.width,
             this.pathStartArea.height,
-            0x00ff00, // Green for start
+            0xff0000, // Red for restricted
             'Start'
         );
         
-        // Create markers for end area (2x2)
         const endMarker = this.createAreaMarker(
             this.pathEndArea.x,
             this.pathEndArea.z,
             this.pathEndArea.width,
             this.pathEndArea.height,
-            0xff0000, // Red for end
+            0xff0000, // Red for restricted
             'End'
         );
+
+        // Create markers for edge boundaries
+        const halfGrid = this.gridSize / 2;
+        const markerGeometry = new THREE.BoxGeometry(1, 0.1, 1);
+        const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.3 });
+
+        for (let i = -halfGrid; i < halfGrid; i++) {
+            // Top edge
+            const topMarker = new THREE.Mesh(markerGeometry, markerMaterial);
+            topMarker.position.set(i + 0.5, 0, -halfGrid + 0.5);
+            this.scene.add(topMarker);
+            this.restrictedAreaMarkers.push(topMarker);
+
+            // Bottom edge
+            const bottomMarker = new THREE.Mesh(markerGeometry, markerMaterial);
+            bottomMarker.position.set(i + 0.5, 0, halfGrid - 0.5);
+            this.scene.add(bottomMarker);
+            this.restrictedAreaMarkers.push(bottomMarker);
+
+            // Left edge
+            const leftMarker = new THREE.Mesh(markerGeometry, markerMaterial);
+            leftMarker.position.set(-halfGrid + 0.5, 0, i + 0.5);
+            this.scene.add(leftMarker);
+            this.restrictedAreaMarkers.push(leftMarker);
+
+            // Right edge
+            const rightMarker = new THREE.Mesh(markerGeometry, markerMaterial);
+            rightMarker.position.set(halfGrid - 0.5, 0, i + 0.5);
+            this.scene.add(rightMarker);
+            this.restrictedAreaMarkers.push(rightMarker);
+        }
     }
 
     createAreaMarker(x, z, width, height, color, label) {
@@ -123,7 +180,7 @@ export class MazeState {
 
     selectShape(shape) {
         if (this.selectedShape === shape) {
-            // Deselect if clicking the same shape
+            // Deselect if selecting the same shape
             this.selectedShape = null;
             this.clearPreview();
         } else {
@@ -168,9 +225,9 @@ export class MazeState {
         // Store current position for rotation
         this.lastPreviewPosition = { x: worldX, z: worldZ };
         
-        // Snap to grid
-        const gridX = Math.round(worldX);
-        const gridZ = Math.round(worldZ);
+        // Snap to grid cell centers by adding 0.5
+        const gridX = Math.floor(worldX) + 0.5;
+        const gridZ = Math.floor(worldZ) + 0.5;
         
         this.shapePreview.position.set(gridX, 0, gridZ);
         
@@ -204,8 +261,9 @@ export class MazeState {
     placeShape(worldX, worldZ) {
         if (!this.selectedShape) return false;
         
-        const gridX = Math.round(worldX);
-        const gridZ = Math.round(worldZ);
+        // Snap to grid cell centers by adding 0.5
+        const gridX = Math.floor(worldX) + 0.5;
+        const gridZ = Math.floor(worldZ) + 0.5;
         
         if (!this.selectedShape.canPlaceAt(gridX, gridZ, this.gridState, this.gridSize)) {
             return false;
@@ -238,6 +296,7 @@ export class MazeState {
         
         for (const cell of shape.getWorldCells()) {
             const block = new THREE.Mesh(geometry, material.clone());
+            // Position blocks at cell centers
             block.position.set(cell.x, 0.25, cell.z);
             block.castShadow = true;
             block.receiveShadow = true;
