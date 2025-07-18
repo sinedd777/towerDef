@@ -54,7 +54,7 @@ export class MazeInputManager {
 
     onMouseMove(event) {
         // Skip if clicking on UI elements
-        if (event.target.closest('#maze-builder-panel')) {
+        if (event.target.closest('#card-container')) {
             return;
         }
         
@@ -80,7 +80,7 @@ export class MazeInputManager {
 
     onClick(event) {
         // Skip if clicking on UI elements
-        if (event.target.closest('#maze-builder-panel')) {
+        if (event.target.closest('#card-container')) {
             return;
         }
 
