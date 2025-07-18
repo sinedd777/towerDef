@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Projectile } from './Projectile.js';
-import { TOWER_TYPES } from './TowerTypes.js';
+import { TOWER_TYPES, calculateUpgradedStats, calculateUpgradeCost, calculateRefundAmount } from './TowerTypes.js';
 import { assetManager } from './managers/AssetManager.js';
 import { objectPool } from './managers/ObjectPool.js';
 
@@ -9,11 +9,16 @@ export class Tower {
         const towerConfig = TOWER_TYPES[type.toUpperCase()];
         
         this.position = new THREE.Vector3(x, y, z);
-        this.range = towerConfig.range;
-        this.damage = towerConfig.damage;
-        this.fireRate = towerConfig.fireRate;
         this.type = type;
+        this.level = 1; // Start at level 1
         this.lastShotTime = 0;
+        
+        // Calculate initial stats based on level
+        this.updateStatsFromLevel();
+        
+        // Selection state for tower management
+        this.isSelected = false;
+        this.selectionRing = null;
         
         // Create tower mesh as a group
         this.mesh = new THREE.Group();
@@ -361,5 +366,177 @@ export class Tower {
         }
         
         material.needsUpdate = true;
+    }
+    
+    // Update tower stats based on current level
+    updateStatsFromLevel() {
+        const stats = calculateUpgradedStats(this.type, this.level);
+        if (stats) {
+            this.damage = stats.damage;
+            this.fireRate = stats.fireRate;
+            this.range = stats.range;
+            this.splashRadius = stats.splashRadius;
+        } else {
+            // Fallback to base stats
+            const towerConfig = TOWER_TYPES[this.type.toUpperCase()];
+            this.damage = towerConfig.damage;
+            this.fireRate = towerConfig.fireRate;
+            this.range = towerConfig.range;
+            this.splashRadius = towerConfig.splashRadius;
+        }
+    }
+    
+    // Check if tower can be upgraded
+    canUpgrade() {
+        const config = TOWER_TYPES[this.type.toUpperCase()];
+        return config && config.upgrade && this.level < config.upgrade.maxLevel;
+    }
+    
+    // Get upgrade cost for next level
+    getUpgradeCost() {
+        return calculateUpgradeCost(this.type, this.level);
+    }
+    
+    // Get refund amount for destroying this tower
+    getRefundAmount() {
+        return calculateRefundAmount(this.type, this.level);
+    }
+    
+    // Upgrade tower to next level
+    upgrade() {
+        if (!this.canUpgrade()) {
+            return false;
+        }
+        
+        this.level++;
+        this.updateStatsFromLevel();
+        
+        // Update range indicator if it exists
+        if (this.rangeIndicator) {
+            this.rangeIndicator.geometry.dispose();
+            const rangeGeometry = new THREE.RingGeometry(this.range - 0.1, this.range, 32);
+            this.rangeIndicator.geometry = rangeGeometry;
+        }
+        
+        // Visual upgrade effect (can be enhanced later)
+        this.createUpgradeEffect();
+        
+        return true;
+    }
+    
+    // Create visual effect when tower is upgraded
+    createUpgradeEffect() {
+        // Simple particle burst effect
+        const particleCount = 20;
+        const particles = new THREE.Group();
+        
+        for (let i = 0; i < particleCount; i++) {
+            const particle = new THREE.Mesh(
+                new THREE.SphereGeometry(0.05, 4, 4),
+                new THREE.MeshBasicMaterial({ 
+                    color: 0xffff00,
+                    transparent: true,
+                    opacity: 0.8
+                })
+            );
+            
+            // Random position around tower
+            const angle = (i / particleCount) * Math.PI * 2;
+            const radius = 0.5 + Math.random() * 0.5;
+            particle.position.set(
+                Math.cos(angle) * radius,
+                0.5 + Math.random() * 1.0,
+                Math.sin(angle) * radius
+            );
+            
+            particles.add(particle);
+        }
+        
+        this.mesh.add(particles);
+        
+        // Animate particles upward and fade out
+        const startTime = Date.now();
+        const duration = 1000; // 1 second
+        
+        const animateParticles = () => {
+            const elapsed = Date.now() - startTime;
+            const progress = elapsed / duration;
+            
+            if (progress < 1) {
+                particles.children.forEach((particle, index) => {
+                    particle.position.y += 0.02;
+                    particle.material.opacity = 0.8 * (1 - progress);
+                    particle.rotation.y += 0.1;
+                });
+                requestAnimationFrame(animateParticles);
+            } else {
+                // Clean up particles
+                this.mesh.remove(particles);
+                particles.children.forEach(particle => {
+                    particle.geometry.dispose();
+                    particle.material.dispose();
+                });
+            }
+        };
+        
+        animateParticles();
+    }
+    
+    // Set selection state
+    setSelected(selected) {
+        this.isSelected = selected;
+        
+        if (selected && !this.selectionRing) {
+            // Create selection ring
+            const ringGeometry = new THREE.RingGeometry(0.6, 0.8, 32);
+            const ringMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00ff00,
+                transparent: true,
+                opacity: 0.6,
+                side: THREE.DoubleSide
+            });
+            
+            this.selectionRing = new THREE.Mesh(ringGeometry, ringMaterial);
+            this.selectionRing.rotation.x = -Math.PI / 2;
+            this.selectionRing.position.y = 0.02 - this.position.y; // Just above ground
+            this.mesh.add(this.selectionRing);
+            
+            // Animate selection ring
+            this.animateSelectionRing();
+        } else if (!selected && this.selectionRing) {
+            // Remove selection ring
+            this.mesh.remove(this.selectionRing);
+            this.selectionRing.geometry.dispose();
+            this.selectionRing.material.dispose();
+            this.selectionRing = null;
+        }
+    }
+    
+    // Animate the selection ring
+    animateSelectionRing() {
+        if (!this.selectionRing || !this.isSelected) return;
+        
+        const time = Date.now() * 0.003;
+        this.selectionRing.material.opacity = 0.3 + 0.3 * Math.sin(time);
+        this.selectionRing.rotation.z += 0.01;
+        
+        requestAnimationFrame(() => this.animateSelectionRing());
+    }
+    
+    // Get tower info for UI display
+    getTowerInfo() {
+        const config = TOWER_TYPES[this.type.toUpperCase()];
+        return {
+            type: this.type,
+            name: config.name,
+            level: this.level,
+            maxLevel: config.upgrade ? config.upgrade.maxLevel : 1,
+            damage: this.damage,
+            fireRate: this.fireRate,
+            range: this.range,
+            upgradeCost: this.getUpgradeCost(),
+            refundAmount: this.getRefundAmount(),
+            canUpgrade: this.canUpgrade()
+        };
     }
 } 

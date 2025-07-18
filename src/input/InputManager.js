@@ -24,9 +24,14 @@ export class InputManager {
         this.previewTower = null;
         this.selectedTowerData = null;
         
+        // Tower selection state
+        this.selectedTower = null;
+        
         // Callbacks
         this.onTowerPlacedCallback = null;
         this.onTowerMenuUpdateCallback = null;
+        this.onTowerSelectedCallback = null;
+        this.onTowerDeselectedCallback = null;
         
         this.setupEventListeners();
     }
@@ -35,6 +40,7 @@ export class InputManager {
         window.addEventListener('mousemove', (e) => this.onMouseMove(e));
         window.addEventListener('click', (e) => this.onMouseClick(e));
         window.addEventListener('contextmenu', (e) => this.onRightClick(e));
+        window.addEventListener('keydown', (e) => this.onKeyDown(e));
         window.addEventListener('resize', () => this.onWindowResize());
     }
 
@@ -103,6 +109,9 @@ export class InputManager {
             this.handleTowerPlacement();
             return;
         }
+        
+        // Handle tower selection
+        this.handleTowerSelection(event);
     }
 
     handleTowerPlacement() {
@@ -172,6 +181,99 @@ export class InputManager {
         
         if (this.selectedTowerData && this.previewTower) {
             this.clearTowerSelection();
+        } else if (this.selectedTower) {
+            // Right-click deselects tower
+            this.deselectTower();
+        }
+    }
+    
+    onKeyDown(event) {
+        // ESC key deselects tower or clears tower placement
+        if (event.key === 'Escape') {
+            if (this.selectedTowerData && this.previewTower) {
+                this.clearTowerSelection();
+            } else if (this.selectedTower) {
+                this.deselectTower();
+            }
+            event.preventDefault();
+        }
+    }
+    
+    handleTowerSelection(event) {
+        // Create raycaster objects for tower detection
+        const towerMeshes = this.towers.map(tower => tower.mesh);
+        
+        if (towerMeshes.length === 0) {
+            // No towers to select, deselect current if any
+            if (this.selectedTower) {
+                this.deselectTower();
+            }
+            return;
+        }
+        
+        // Check for tower intersections
+        const towerIntersects = this.raycaster.intersectObjects(towerMeshes, true);
+        
+        if (towerIntersects.length > 0) {
+            // Find which tower was clicked
+            let clickedTower = null;
+            for (const tower of this.towers) {
+                if (towerIntersects[0].object.parent === tower.mesh || 
+                    towerIntersects[0].object === tower.mesh ||
+                    tower.mesh.getObjectById(towerIntersects[0].object.id)) {
+                    clickedTower = tower;
+                    break;
+                }
+            }
+            
+            if (clickedTower) {
+                if (this.selectedTower === clickedTower) {
+                    // Clicking the same tower deselects it
+                    this.deselectTower();
+                } else {
+                    // Select the new tower
+                    this.selectTower(clickedTower);
+                }
+                return;
+            }
+        }
+        
+        // No tower was clicked, deselect current tower if any
+        if (this.selectedTower) {
+            this.deselectTower();
+        }
+    }
+    
+    selectTower(tower) {
+        // Deselect previous tower
+        if (this.selectedTower) {
+            this.selectedTower.setSelected(false);
+        }
+        
+        // Select new tower
+        this.selectedTower = tower;
+        tower.setSelected(true);
+        
+        debugLog('Tower selected:', tower.getTowerInfo());
+        
+        // Notify callback
+        if (this.onTowerSelectedCallback) {
+            this.onTowerSelectedCallback(tower);
+        }
+    }
+    
+    deselectTower() {
+        if (!this.selectedTower) return;
+        
+        this.selectedTower.setSelected(false);
+        const deselectedTower = this.selectedTower;
+        this.selectedTower = null;
+        
+        debugLog('Tower deselected');
+        
+        // Notify callback
+        if (this.onTowerDeselectedCallback) {
+            this.onTowerDeselectedCallback(deselectedTower);
         }
     }
 
@@ -297,15 +399,28 @@ export class InputManager {
     setOnTowerMenuUpdateCallback(callback) {
         this.onTowerMenuUpdateCallback = callback;
     }
+    
+    setOnTowerSelectedCallback(callback) {
+        this.onTowerSelectedCallback = callback;
+    }
+    
+    setOnTowerDeselectedCallback(callback) {
+        this.onTowerDeselectedCallback = callback;
+    }
 
     getSelectedTowerData() {
         return this.selectedTowerData;
+    }
+    
+    getSelectedTower() {
+        return this.selectedTower;
     }
 
     destroy() {
         window.removeEventListener('mousemove', this.onMouseMove);
         window.removeEventListener('click', this.onMouseClick);
         window.removeEventListener('contextmenu', this.onRightClick);
+        window.removeEventListener('keydown', this.onKeyDown);
         window.removeEventListener('resize', this.onWindowResize);
     }
 } 

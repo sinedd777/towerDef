@@ -9,6 +9,7 @@ import { MazeBuilderUI } from './mazeBuilder/MazeBuilderUI.js';
 import { MazeInputManager } from './mazeBuilder/MazeInputManager.js';
 import { Pathfinding } from './Pathfinding.js';
 import { TowerSelectionUI } from './ui/TowerSelectionUI.js';
+import { TowerManagementUI } from './ui/TowerManagementUI.js';
 import { TOWER_TYPES } from './TowerTypes.js';
 import { loadTexture } from './utils/textureLoader.js';
 import { assetManager } from './managers/AssetManager.js';
@@ -114,6 +115,7 @@ const pathfinding = new Pathfinding(20);
 
 // UI System initialization
 const towerSelectionUI = new TowerSelectionUI(gameState);
+const towerManagementUI = new TowerManagementUI(gameState, labelRenderer, camera);
 
 // Listen for tower updates
 document.addEventListener('towersUpdated', (event) => {
@@ -337,6 +339,44 @@ function initializeTowerInput() {
     inputManager.setOnTowerMenuUpdateCallback(() => {
         towerSelectionUI.updateTowerMenu();
     });
+    
+    // Setup tower management callbacks
+    inputManager.setOnTowerSelectedCallback((tower) => {
+        towerManagementUI.showPanel(tower);
+    });
+    
+    inputManager.setOnTowerDeselectedCallback((tower) => {
+        towerManagementUI.hidePanel();
+    });
+    
+    towerManagementUI.setOnTowerUpgradeCallback((tower) => {
+        // Update UI after upgrade
+        towerSelectionUI.updateTowerMenu();
+    });
+    
+    towerManagementUI.setOnTowerDestroyCallback((tower) => {
+        // Remove tower from arrays and scene
+        const index = towers.indexOf(tower);
+        if (index > -1) {
+            towers.splice(index, 1);
+            scene.remove(tower.mesh);
+            
+            // Clean up tower resources
+            tower.mesh.traverse((child) => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach(mat => mat.dispose());
+                    } else {
+                        child.material.dispose();
+                    }
+                }
+            });
+        }
+        
+        // Update UI
+        towerSelectionUI.updateTowerMenu();
+    });
 }
 
 // Setup maze builder callbacks
@@ -530,6 +570,9 @@ function animate() {
     
     // Update environment animations
     environmentManager.update();
+    
+    // Update tower management UI
+    towerManagementUI.update();
     
     // Update renderers
     renderer.render(scene, camera);

@@ -16,6 +16,12 @@ export const TOWER_TYPES = {
         range: 4.0,
         damage: 12,
         fireRate: 1.0,
+        upgrade: {
+            damageMultiplier: 1.5,   // +50% damage per level
+            fireRateMultiplier: 1.25, // +25% fire rate per level
+            costMultiplier: [1.5, 2.0], // Level 2: 1.5x, Level 3: 2x base cost
+            maxLevel: 3
+        },
         model: {
             base: {
                 geometry: new THREE.CylinderGeometry(0.3, 0.4, 1.0, 8),
@@ -37,6 +43,12 @@ export const TOWER_TYPES = {
         range: 8.0,
         damage: 20,
         fireRate: 0.5,
+        upgrade: {
+            damageMultiplier: 1.5,
+            fireRateMultiplier: 1.25,
+            costMultiplier: [1.5, 2.0],
+            maxLevel: 3
+        },
         model: {
             base: {
                 geometry: new THREE.CylinderGeometry(0.25, 0.35, 1.5, 8),
@@ -58,6 +70,12 @@ export const TOWER_TYPES = {
         range: 3.0,
         damage: 6,
         fireRate: 3.0,
+        upgrade: {
+            damageMultiplier: 1.5,
+            fireRateMultiplier: 1.25,
+            costMultiplier: [1.5, 2.0],
+            maxLevel: 3
+        },
         model: {
             base: {
                 geometry: new THREE.CylinderGeometry(0.35, 0.45, 0.8, 8),
@@ -80,6 +98,12 @@ export const TOWER_TYPES = {
         damage: 8,
         fireRate: 2.0,
         splashRadius: 3.5,
+        upgrade: {
+            damageMultiplier: 1.5,
+            fireRateMultiplier: 1.25,
+            costMultiplier: [1.5, 2.0],
+            maxLevel: 3
+        },
         model: {
             base: {
                 geometry: new THREE.CylinderGeometry(0.4, 0.5, 0.9, 8),
@@ -91,4 +115,52 @@ export const TOWER_TYPES = {
             }
         }
     }
-}; 
+};
+
+// Utility functions for upgrade calculations
+export function calculateUpgradeCost(towerType, currentLevel) {
+    const config = TOWER_TYPES[towerType.toUpperCase()];
+    if (!config || !config.upgrade || currentLevel >= config.upgrade.maxLevel) {
+        return null; // Cannot upgrade
+    }
+    
+    const baseCost = config.cost;
+    const multiplier = config.upgrade.costMultiplier[currentLevel - 1]; // currentLevel is 1-based
+    return Math.floor(baseCost * multiplier);
+}
+
+export function calculateUpgradedStats(towerType, currentLevel) {
+    const config = TOWER_TYPES[towerType.toUpperCase()];
+    if (!config || !config.upgrade) {
+        return null;
+    }
+    
+    const damageUpgrade = Math.pow(config.upgrade.damageMultiplier, currentLevel - 1);
+    const fireRateUpgrade = Math.pow(config.upgrade.fireRateMultiplier, currentLevel - 1);
+    
+    return {
+        damage: Math.floor(config.damage * damageUpgrade),
+        fireRate: parseFloat((config.fireRate * fireRateUpgrade).toFixed(2)),
+        range: config.range, // Range doesn't change with upgrades
+        splashRadius: config.splashRadius // Splash radius doesn't change
+    };
+}
+
+export function calculateTotalInvestment(towerType, currentLevel) {
+    const config = TOWER_TYPES[towerType.toUpperCase()];
+    if (!config) return 0;
+    
+    let total = config.cost; // Base cost
+    
+    // Add upgrade costs up to current level
+    for (let level = 1; level < currentLevel; level++) {
+        total += calculateUpgradeCost(towerType, level);
+    }
+    
+    return total;
+}
+
+export function calculateRefundAmount(towerType, currentLevel) {
+    const total = calculateTotalInvestment(towerType, currentLevel);
+    return Math.floor(total * 0.7); // 70% refund
+} 
