@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { generateShapeHand } from './TetrisShapes.js';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { Pathfinding } from '../Pathfinding.js';
+import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 export class MazeState {
     constructor(scene, gridSize = 10) {
@@ -192,25 +193,132 @@ export class MazeState {
         }
     }
 
+    // Create a cohesive merged geometry for a shape
+    createCohesiveShapeGeometry(shape, blockHeight = 0.5, blockSize = 1.0) {
+        const geometries = [];
+        
+        // Create individual block geometries that touch each other
+        for (const cell of shape.cells) {
+            // Use full-size blocks (1.0) so they touch and create seamless appearance
+            const blockGeometry = new THREE.BoxGeometry(
+                blockSize, 
+                blockHeight, 
+                blockSize,
+                8, // Higher segments for smoother beveling
+                4, // Height segments for top/bottom rounding
+                8  // Depth segments for smoother beveling
+            );
+            
+            // Position the geometry at exact grid positions
+            blockGeometry.translate(cell[0], blockHeight / 2, cell[1]);
+            geometries.push(blockGeometry);
+        }
+        
+        // Merge all geometries into one seamless shape
+        const mergedGeometry = BufferGeometryUtils.mergeGeometries(geometries);
+        
+        // Apply bevel effect to create rounded, polished edges
+        this.addBevelEffect(mergedGeometry, shape);
+        
+        // Compute vertex normals for smooth lighting across the merged surface
+        mergedGeometry.computeVertexNormals();
+        
+        return mergedGeometry;
+    }
+
+    // Add sophisticated bevel effect for polished appearance
+    addBevelEffect(geometry, shape) {
+        const positionAttribute = geometry.attributes.position;
+        const vertex = new THREE.Vector3();
+        const bevelRadius = 0.08; // Subtle bevel amount
+        
+        // Get shape bounds to understand edge locations
+        const shapeCells = new Set();
+        shape.cells.forEach(cell => {
+            shapeCells.add(`${cell[0]},${cell[1]}`);
+        });
+        
+        for (let i = 0; i < positionAttribute.count; i++) {
+            vertex.fromBufferAttribute(positionAttribute, i);
+            
+            // Determine if this vertex is on an external edge
+            const cellX = Math.round(vertex.x);
+            const cellZ = Math.round(vertex.z);
+            
+            // Check if we're at the edge of the shape
+            let isExternalEdge = false;
+            
+            // Check neighboring cells to see if this is an external edge
+            const neighbors = [
+                [cellX + 1, cellZ], [cellX - 1, cellZ],
+                [cellX, cellZ + 1], [cellX, cellZ - 1]
+            ];
+            
+            for (const [nx, nz] of neighbors) {
+                if (!shapeCells.has(`${nx},${nz}`)) {
+                    isExternalEdge = true;
+                    break;
+                }
+            }
+            
+            // Apply beveling only to external edges
+            if (isExternalEdge) {
+                // Calculate distance from cell center
+                const distFromCenterX = Math.abs(vertex.x - cellX);
+                const distFromCenterZ = Math.abs(vertex.z - cellZ);
+                
+                // Apply beveling to corners and edges
+                if (distFromCenterX > 0.3 || distFromCenterZ > 0.3) {
+                    // Smooth corner beveling
+                    const maxDist = Math.max(distFromCenterX, distFromCenterZ);
+                    const bevelFactor = Math.min(maxDist * bevelRadius, bevelRadius);
+                    
+                    // Pull edges slightly inward for rounding
+                    if (distFromCenterX > 0.3) {
+                        vertex.x = cellX + (vertex.x - cellX) * (1 - bevelFactor);
+                    }
+                    if (distFromCenterZ > 0.3) {
+                        vertex.z = cellZ + (vertex.z - cellZ) * (1 - bevelFactor);
+                    }
+                }
+                
+                // Add subtle top edge rounding
+                if (vertex.y > 0.3) {
+                    const topBevel = Math.min(bevelRadius * 0.5, 0.03);
+                    vertex.y -= topBevel * (distFromCenterX + distFromCenterZ);
+                }
+            }
+            
+            positionAttribute.setXYZ(i, vertex.x, vertex.y, vertex.z);
+        }
+        
+        positionAttribute.needsUpdate = true;
+    }
+
+
+
     createPreview() {
         this.clearPreview();
         
         if (!this.selectedShape) return;
         
-        const geometry = new THREE.BoxGeometry(0.8, 0.3, 0.8);
-        const material = new THREE.MeshLambertMaterial({
+        // Create merged geometry for the entire shape
+        const mergedGeometry = this.createCohesiveShapeGeometry(this.selectedShape, 0.3, 1.0);
+        
+        const material = new THREE.MeshPhongMaterial({
             color: this.selectedShape.color,
             transparent: true,
-            opacity: 0.6
+            opacity: 0.75,
+            // Enhanced properties to show beveling
+            emissive: new THREE.Color(this.selectedShape.color).multiplyScalar(0.12),
+            flatShading: false, // Smooth shading to show bevels
+            shininess: 50, // Subtle shininess to highlight rounded edges
+            specular: new THREE.Color(0x111111) // Subtle specular highlights
         });
         
-        this.shapePreview = new THREE.Group();
-        
-        for (const cell of this.selectedShape.cells) {
-            const block = new THREE.Mesh(geometry, material.clone());
-            block.position.set(cell[0], 0.5, cell[1]);
-            this.shapePreview.add(block);
-        }
+        // Create a single mesh for the entire shape
+        this.shapePreview = new THREE.Mesh(mergedGeometry, material);
+        this.shapePreview.position.set(0, 0, 0);
         
         this.scene.add(this.shapePreview);
     }
@@ -238,9 +346,8 @@ export class MazeState {
         const canPlace = this.selectedShape.canPlaceAt(gridX, gridZ, this.gridState, this.gridSize);
         const color = canPlace ? this.selectedShape.color : 0xff0000;
         
-        this.shapePreview.children.forEach(block => {
-            block.material.color.setHex(color);
-        });
+        // Update the single mesh material color
+        this.shapePreview.material.color.setHex(color);
     }
 
     rotateSelectedShape() {
@@ -290,22 +397,18 @@ export class MazeState {
             }
         }
 
-        // Remove visual blocks for this shape
-        const blocksToRemove = this.gridBlocks.filter(block => {
-            const blockX = Math.round(block.position.x);
-            const blockZ = Math.round(block.position.z);
-            return this.lastPlacedShape.getWorldCells().some(cell => 
-                Math.round(cell.x) === blockX && Math.round(cell.z) === blockZ
-            );
-        });
+        // Remove visual mesh for this shape
+        const meshToRemove = this.gridBlocks.find(mesh => 
+            mesh.userData.shape === this.lastPlacedShape
+        );
 
-        blocksToRemove.forEach(block => {
-            this.scene.remove(block);
-            const index = this.gridBlocks.indexOf(block);
+        if (meshToRemove) {
+            this.scene.remove(meshToRemove);
+            const index = this.gridBlocks.indexOf(meshToRemove);
             if (index !== -1) {
                 this.gridBlocks.splice(index, 1);
             }
-        });
+        }
 
         // Add the shape back to the hand
         this.currentShapeHand.push(this.lastPlacedShape);
@@ -362,18 +465,31 @@ export class MazeState {
     }
 
     createVisualBlocks(shape) {
-        const geometry = new THREE.BoxGeometry(0.9, 0.5, 0.9);
-        const material = new THREE.MeshLambertMaterial({ color: shape.color });
+        // Create a cohesive merged geometry for the placed shape
+        const mergedGeometry = this.createCohesiveShapeGeometry(shape, 0.5, 1.0);
         
-        for (const cell of shape.getWorldCells()) {
-            const block = new THREE.Mesh(geometry, material.clone());
-            // Position blocks at cell centers
-            block.position.set(cell.x, 0.25, cell.z);
-            block.castShadow = true;
-            block.receiveShadow = true;
-            this.scene.add(block);
-            this.gridBlocks.push(block);
-        }
+        const material = new THREE.MeshPhongMaterial({ 
+            color: shape.color,
+            // Enhanced properties to showcase beveling
+            emissive: new THREE.Color(shape.color).multiplyScalar(0.08),
+            flatShading: false, // Smooth shading to show beveled edges
+            shininess: 60, // Subtle shininess to highlight the beveling
+            specular: new THREE.Color(0x222222) // Soft specular highlights
+        });
+        
+        // Create a single mesh for the entire shape
+        const shapeMesh = new THREE.Mesh(mergedGeometry, material);
+        
+        // Position the shape at its world position
+        shapeMesh.position.set(shape.position.x, 0, shape.position.z);
+        shapeMesh.castShadow = true;
+        shapeMesh.receiveShadow = true;
+        
+        // Store reference to the shape for easier management
+        shapeMesh.userData.shape = shape;
+        
+        this.scene.add(shapeMesh);
+        this.gridBlocks.push(shapeMesh);
     }
 
     // Get obstacles for pathfinding

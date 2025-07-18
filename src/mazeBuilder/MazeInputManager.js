@@ -111,18 +111,14 @@ export class MazeInputManager {
             const originalColor = this.mazeState.selectedShape.color;
             
             // Flash red
-            this.mazeState.shapePreview.children.forEach(block => {
-                block.material.color.setHex(0xff0000);
-                block.material.opacity = 0.8;
-            });
+            this.mazeState.shapePreview.material.color.setHex(0xff0000);
+            this.mazeState.shapePreview.material.opacity = 0.8;
             
             // Return to original color after a short delay
             setTimeout(() => {
                 if (this.mazeState.shapePreview) {
-                    this.mazeState.shapePreview.children.forEach(block => {
-                        block.material.color.setHex(originalColor);
-                        block.material.opacity = 0.6;
-                    });
+                    this.mazeState.shapePreview.material.color.setHex(originalColor);
+                    this.mazeState.shapePreview.material.opacity = 0.6;
                 }
             }, 200);
         }
