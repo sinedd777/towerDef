@@ -1,0 +1,322 @@
+import { v4 as uuidv4 } from 'uuid';
+import GameState from './GameState.js';
+import GameLogic from './GameLogic.js';
+import { Logger } from '../monitoring/Logger.js';
+
+class GameSession {
+    constructor(sessionId, maxPlayers = 2) {
+        this.sessionId = sessionId || uuidv4();
+        this.maxPlayers = maxPlayers;
+        this.players = new Map(); // socketId -> player data
+        this.spectators = new Set(); // socketIds of spectators
+        this.gameState = new GameState();
+        this.gameLogic = new GameLogic(this);
+        this.logger = new Logger();
+        
+        // Session state
+        this.status = 'waiting'; // waiting, ready, active, paused, ended
+        this.createdAt = Date.now();
+        this.startedAt = null;
+        this.endedAt = null;
+        
+        // Game timing
+        this.tickRate = 60; // 60 ticks per second
+        this.gameLoop = null;
+        this.lastTickTime = 0;
+        this.deltaTime = 0;
+        
+        // Synchronization
+        this.stateVersion = 0;
+        this.lastStateUpdate = 0;
+        this.pendingUpdates = [];
+        
+        this.logger.info(`GameSession created: ${this.sessionId}`);
+    }
+    
+    // Player Management
+    addPlayer(socketId, playerData) {
+        if (this.players.size >= this.maxPlayers) {
+            // Add as spectator if game is full
+            this.addSpectator(socketId);
+            return { success: false, reason: 'session_full', addedAsSpectator: true };
+        }
+        
+        const playerId = `player${this.players.size + 1}`;
+        const player = {
+            socketId,
+            playerId,
+            name: playerData.name || `Player ${this.players.size + 1}`,
+            health: 100,
+            money: 150,
+            score: 0,
+            wave: 1,
+            towers: [],
+            ready: false,
+            connected: true,
+            joinedAt: Date.now(),
+            ...playerData
+        };
+        
+        this.players.set(socketId, player);
+        this.gameState.addPlayer(playerId, player);
+        
+        this.logger.info(`Player ${playerId} joined session ${this.sessionId}`);
+        this.checkReadyState();
+        
+        return { success: true, player, sessionId: this.sessionId };
+    }
+    
+    removePlayer(socketId) {
+        const player = this.players.get(socketId);
+        if (!player) {
+            this.spectators.delete(socketId);
+            return;
+        }
+        
+        this.players.delete(socketId);
+        this.gameState.removePlayer(player.playerId);
+        
+        this.logger.info(`Player ${player.playerId} left session ${this.sessionId}`);
+        
+        // End game if too few players
+        if (this.status === 'active' && this.players.size < 1) {
+            this.endGame('insufficient_players');
+        }
+    }
+    
+    addSpectator(socketId) {
+        this.spectators.add(socketId);
+        this.logger.info(`Spectator joined session ${this.sessionId}`);
+    }
+    
+    // Session State Management
+    setPlayerReady(socketId, ready = true) {
+        const player = this.players.get(socketId);
+        if (player) {
+            player.ready = ready;
+            this.checkReadyState();
+        }
+    }
+    
+    checkReadyState() {
+        if (this.status !== 'waiting') return;
+        
+        const allReady = this.players.size >= 2 && 
+                        Array.from(this.players.values()).every(p => p.ready);
+        
+        if (allReady) {
+            this.status = 'ready';
+            this.broadcastToSession('session:ready', {
+                sessionId: this.sessionId,
+                players: this.getPlayerList()
+            });
+        }
+    }
+    
+    startGame() {
+        if (this.status !== 'ready') {
+            throw new Error('Cannot start game - session not ready');
+        }
+        
+        this.status = 'active';
+        this.startedAt = Date.now();
+        this.lastTickTime = Date.now();
+        
+        // Initialize game state
+        this.gameState.initialize();
+        
+        // Start game loop
+        this.startGameLoop();
+        
+        this.broadcastToSession('game:start', {
+            sessionId: this.sessionId,
+            gameState: this.gameState.getPublicState(),
+            timestamp: this.startedAt
+        });
+        
+        this.logger.info(`Game started in session ${this.sessionId}`);
+    }
+    
+    pauseGame() {
+        if (this.status === 'active') {
+            this.status = 'paused';
+            this.stopGameLoop();
+            this.broadcastToSession('game:pause', { sessionId: this.sessionId });
+        }
+    }
+    
+    resumeGame() {
+        if (this.status === 'paused') {
+            this.status = 'active';
+            this.lastTickTime = Date.now();
+            this.startGameLoop();
+            this.broadcastToSession('game:resume', { sessionId: this.sessionId });
+        }
+    }
+    
+    endGame(reason = 'completed') {
+        if (this.status === 'ended') return;
+        
+        this.status = 'ended';
+        this.endedAt = Date.now();
+        this.stopGameLoop();
+        
+        const gameResults = this.gameState.getGameResults();
+        
+        this.broadcastToSession('game:end', {
+            sessionId: this.sessionId,
+            reason,
+            results: gameResults,
+            duration: this.endedAt - this.startedAt
+        });
+        
+        this.logger.info(`Game ended in session ${this.sessionId}, reason: ${reason}`);
+    }
+    
+    // Game Loop
+    startGameLoop() {
+        if (this.gameLoop) return;
+        
+        this.gameLoop = setInterval(() => {
+            this.tick();
+        }, 1000 / this.tickRate);
+    }
+    
+    stopGameLoop() {
+        if (this.gameLoop) {
+            clearInterval(this.gameLoop);
+            this.gameLoop = null;
+        }
+    }
+    
+    tick() {
+        const now = Date.now();
+        this.deltaTime = now - this.lastTickTime;
+        this.lastTickTime = now;
+        
+        // Update game logic
+        this.gameLogic.update(this.deltaTime);
+        
+        // Update game state
+        this.gameState.update(this.deltaTime);
+        
+        // Send state updates
+        this.sendStateUpdate();
+    }
+    
+    // State Synchronization
+    sendStateUpdate() {
+        this.stateVersion++;
+        this.lastStateUpdate = Date.now();
+        
+        const stateUpdate = {
+            version: this.stateVersion,
+            timestamp: this.lastStateUpdate,
+            deltaTime: this.deltaTime,
+            gameState: this.gameState.getDeltaState(),
+            players: this.getPlayerStates()
+        };
+        
+        this.broadcastToSession('game:state_update', stateUpdate);
+    }
+    
+    handlePlayerAction(socketId, action, data) {
+        const player = this.players.get(socketId);
+        if (!player || this.status !== 'active') return false;
+        
+        // Validate and process action through game logic
+        const result = this.gameLogic.processPlayerAction(player.playerId, action, data);
+        
+        if (result.success) {
+            // Broadcast action to other players
+            this.broadcastToSession('player:action', {
+                playerId: player.playerId,
+                action,
+                data: result.data,
+                timestamp: Date.now()
+            }, socketId);
+        }
+        
+        return result;
+    }
+    
+    // Communication
+    broadcastToSession(event, data, excludeSocketId = null) {
+        // Broadcast to all players
+        for (const player of this.players.values()) {
+            if (excludeSocketId && player.socketId === excludeSocketId) continue;
+            this.emit(player.socketId, event, data);
+        }
+        
+        // Broadcast to spectators
+        for (const spectatorId of this.spectators) {
+            if (excludeSocketId && spectatorId === excludeSocketId) continue;
+            this.emit(spectatorId, event, data);
+        }
+    }
+    
+    emit(socketId, event, data) {
+        // This will be set by the SessionHandler
+        if (this.io) {
+            this.io.to(socketId).emit(event, data);
+        }
+    }
+    
+    setIO(io) {
+        this.io = io;
+    }
+    
+    // Getters
+    getPlayerList() {
+        return Array.from(this.players.values()).map(p => ({
+            playerId: p.playerId,
+            name: p.name,
+            ready: p.ready,
+            connected: p.connected
+        }));
+    }
+    
+    getPlayerStates() {
+        return Array.from(this.players.values()).map(p => ({
+            playerId: p.playerId,
+            health: p.health,
+            money: p.money,
+            score: p.score,
+            wave: p.wave,
+            towers: p.towers.length
+        }));
+    }
+    
+    getSessionInfo() {
+        return {
+            sessionId: this.sessionId,
+            status: this.status,
+            playerCount: this.players.size,
+            spectatorCount: this.spectators.size,
+            maxPlayers: this.maxPlayers,
+            createdAt: this.createdAt,
+            startedAt: this.startedAt,
+            duration: this.startedAt ? Date.now() - this.startedAt : 0
+        };
+    }
+    
+    getMetrics() {
+        return {
+            ...this.getSessionInfo(),
+            stateVersion: this.stateVersion,
+            lastStateUpdate: this.lastStateUpdate,
+            tickRate: this.tickRate,
+            players: this.getPlayerStates()
+        };
+    }
+    
+    // Cleanup
+    destroy() {
+        this.stopGameLoop();
+        this.players.clear();
+        this.spectators.clear();
+        this.logger.info(`GameSession destroyed: ${this.sessionId}`);
+    }
+}
+
+export default GameSession; 
