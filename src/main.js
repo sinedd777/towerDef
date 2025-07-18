@@ -123,10 +123,10 @@ document.addEventListener('towersUpdated', (event) => {
 });
 
 // Enhanced lighting setup for 3D models - much brighter for Kenney assets
-const ambientLight = new THREE.AmbientLight(0x606060, 0.8); // Increased for brighter overall lighting
+const ambientLight = new THREE.AmbientLight(0x606060, 0.8); // Moderate ambient lighting
 scene.add(ambientLight);
 
-// Main directional light (sun) - increased intensity
+// Main directional light (sun)
 const mainLight = new THREE.DirectionalLight(0xffffff, 1.4);
 mainLight.position.set(10, 15, 8);
 mainLight.castShadow = true;
@@ -145,17 +145,17 @@ mainLight.shadow.normalBias = 0.02;
 
 scene.add(mainLight);
 
-// Secondary fill light for softer shadows - increased intensity
+// Secondary fill light for softer shadows
 const fillLight = new THREE.DirectionalLight(0x4444ff, 0.3); // Subtle blue tint
 fillLight.position.set(-8, 8, -8);
 scene.add(fillLight);
 
-// Rim light for model definition - increased intensity
-const rimLight = new THREE.DirectionalLight(0xffd700, 0.4); // Golden rim light, brighter
+// Rim light for model definition
+const rimLight = new THREE.DirectionalLight(0xffd700, 0.4); // Golden rim light
 rimLight.position.set(0, 5, -10);
 scene.add(rimLight);
 
-// Point light for dynamic illumination near spawn points
+// Point lights for dynamic illumination near spawn points
 const spawnLight = new THREE.PointLight(0x00ff00, 0.5, 10);
 spawnLight.position.set(-8, 2, -8); // Near enemy spawn
 scene.add(spawnLight);
@@ -170,7 +170,7 @@ const groundGeometry = new THREE.PlaneGeometry(20, 20);
 const snowTexture = loadTexture('/assets/textures/snow01.png', 10, 10);
 const groundMaterial = new THREE.MeshLambertMaterial({ 
     map: snowTexture,
-    color: 0xffffff // Adding a white tint to enhance snow appearance
+    color: 0x1B4332 // Dark green color to match oklch(44.8% 0.119 151.328)
 });
 const ground = new THREE.Mesh(groundGeometry, groundMaterial);
 ground.rotation.x = -Math.PI / 2;

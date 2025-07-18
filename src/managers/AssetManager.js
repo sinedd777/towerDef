@@ -174,26 +174,38 @@ export class AssetManager {
     }
 
     /**
-     * Enhance material properties for better visibility and lighting
+     * Enhance material properties for better visibility
+     * @param {THREE.Material} material
      */
     enhanceMaterial(material) {
-        // Improve material properties for Kenney assets
-        material.roughness = Math.min(material.roughness || 0.5, 0.4); // Reduce roughness for more reflection
-        material.metalness = material.metalness || 0.1; // Slight metalness for better lighting
+        if (!material) return;
+
+        // Increase the base brightness of the material
+        material.color.multiplyScalar(1.3); // Make base color 30% brighter
         
-        // Brighten colors significantly for cartoon-style assets
-        if (material.color) {
-            material.color.multiplyScalar(1.3); // Brighten base colors
+        // Enhance material properties based on type
+        if (material.type === 'MeshStandardMaterial' || material.type === 'MeshPhysicalMaterial') {
+            // Reduce metalness for less reflection
+            material.metalness = 0.3;
+            // Increase roughness for more diffuse look
+            material.roughness = 0.6;
+            // Add slight emission for ambient glow
+            material.emissive = material.color.clone().multiplyScalar(0.1);
+            material.emissiveIntensity = 0.2;
         }
-        
-        // Add subtle emissive glow to make models more visible
-        if (!material.emissive) {
-            material.emissive = new THREE.Color(0x202020); // Subtle warm glow
-        } else {
-            material.emissive.multiplyScalar(1.2); // Enhance existing emissive
+
+        // Make sure materials use physically correct lighting
+        material.physicallyCorrectLights = true;
+
+        // Ensure good color space
+        material.colorSpace = THREE.SRGBColorSpace;
+
+        // Enhance environment map intensity if present
+        if (material.envMapIntensity !== undefined) {
+            material.envMapIntensity = 1.2;
         }
-        
-        // Ensure proper lighting response
+
+        // Make sure materials update
         material.needsUpdate = true;
     }
 

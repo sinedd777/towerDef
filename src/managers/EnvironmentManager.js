@@ -95,15 +95,15 @@ export class EnvironmentManager {
      */
     async scatterEnvironmentalObjects(obstacles, enemyStart, enemyEnd) {
         const objectTypes = [
-            { category: 'environment', key: 'tree', weight: 0.3, scale: [0.8, 1.2] },
-            { category: 'environment', key: 'rocks', weight: 0.25, scale: [0.6, 1.0] },
-            { category: 'environment', key: 'crystal', weight: 0.2, scale: [0.7, 1.1] },
-            { category: 'environment', key: 'dirt', weight: 0.15, scale: [0.5, 0.8] },
-            { category: 'environment', key: 'tree-large', weight: 0.1, scale: [1.0, 1.5] }
+            { category: 'environment', key: 'tree', weight: 0.3, scale: [1.2, 1.8] },
+            { category: 'environment', key: 'rocks', weight: 0.25, scale: [0.9, 1.5] },
+            { category: 'environment', key: 'crystal', weight: 0.2, scale: [1.0, 1.6] },
+            { category: 'environment', key: 'dirt', weight: 0.15, scale: [0.8, 1.2] },
+            { category: 'environment', key: 'tree-large', weight: 0.1, scale: [1.5, 2.2] }
         ];
         
         const numObjects = 25; // Number of environmental objects to place
-        const minDistance = 2.0; // Minimum distance from obstacles/spawns
+        const minDistance = 3.0; // Increased minimum distance from obstacles/spawns (was 2.0)
         const maxAttempts = 100; // Max attempts to find valid position
         
         for (let i = 0; i < numObjects; i++) {
@@ -194,6 +194,31 @@ export class EnvironmentManager {
                 model.rotation.x = (Math.random() - 0.5) * 0.2;
                 model.rotation.z = (Math.random() - 0.5) * 0.2;
             }
+
+            // Enhance materials specifically for environmental objects
+            model.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    const materials = Array.isArray(child.material) ? child.material : [child.material];
+                    materials.forEach(material => {
+                        // Brighten the base color
+                        material.color.multiplyScalar(1.4);
+                        
+                        // Add subtle emissive glow
+                        if (!material.emissive) {
+                            material.emissive = new THREE.Color(0x303030);
+                        }
+                        material.emissiveIntensity = 0.15;
+                        
+                        // Adjust material properties for better visibility
+                        if (material.type.includes('Standard') || material.type.includes('Physical')) {
+                            material.metalness = 0.1;  // Low metalness for more diffuse look
+                            material.roughness = 0.6;  // Moderate roughness
+                        }
+                        
+                        material.needsUpdate = true;
+                    });
+                }
+            });
             
             this.scene.add(model);
             this.environmentObjects.push(model);
