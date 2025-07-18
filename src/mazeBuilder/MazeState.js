@@ -102,9 +102,6 @@ export class MazeState {
 
         // Create a single clean boundary outline instead of individual markers
         this.createBoundaryOutline();
-        
-        // Add visual indicators for the pathfinding clearance zone
-        this.createClearanceIndicators();
     }
     
     createBoundaryOutline() {
@@ -122,8 +119,8 @@ export class MazeState {
         const boundaryMaterial = new THREE.LineBasicMaterial({ 
             color: 0x666666, 
             transparent: true, 
-            opacity: 0.8,
-            linewidth: 2
+            opacity: 1,
+            linewidth: 3
         });
         
         const boundaryLine = new THREE.Line(boundaryGeometry, boundaryMaterial);
@@ -131,30 +128,6 @@ export class MazeState {
         this.restrictedAreaMarkers.push(boundaryLine);
     }
     
-    createClearanceIndicators() {
-        // Create subtle indicators showing the actual pathfinding clearance zone
-        const halfGrid = this.gridSize / 2;
-        const clearance = 0.5; // Match pathfinding clearance
-        
-        // Create a wireframe box showing the valid pathfinding area
-        const clearanceGeometry = new THREE.BoxGeometry(
-            this.gridSize - (clearance * 2), 
-            0.02, 
-            this.gridSize - (clearance * 2)
-        );
-        const clearanceMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x004400, 
-            transparent: true, 
-            opacity: 0.2,
-            wireframe: true
-        });
-        
-        const clearanceIndicator = new THREE.Mesh(clearanceGeometry, clearanceMaterial);
-        clearanceIndicator.position.set(0, 0.03, 0);
-        this.scene.add(clearanceIndicator);
-        this.restrictedAreaMarkers.push(clearanceIndicator);
-    }
-
     selectShape(shape) {
         if (this.selectedShape === shape) {
             // Deselect if selecting the same shape
