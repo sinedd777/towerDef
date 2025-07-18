@@ -37,6 +37,9 @@ const sessionHandler = new SessionHandler(io, matchmakingManager, logger);
 const playerHandler = new PlayerHandler(io, sessionHandler, logger);
 const gameEventHandler = new GameEventHandler(io, sessionHandler, logger);
 
+// Set up matchmaking dependencies
+matchmakingManager.setDependencies(sessionHandler, io, logger);
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
     logger.info(`Client connected: ${socket.id}`);
@@ -45,6 +48,9 @@ io.on('connection', (socket) => {
     playerHandler.registerEvents(socket);
     sessionHandler.registerEvents(socket);
     gameEventHandler.registerEvents(socket);
+    
+    // Handle initial connection
+    playerHandler.handleConnection(socket);
     
     socket.on('disconnect', (reason) => {
         logger.info(`Client disconnected: ${socket.id}, reason: ${reason}`);

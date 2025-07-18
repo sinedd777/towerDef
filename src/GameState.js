@@ -5,6 +5,9 @@ export class GameState {
         this.wave = 1;
         this.enemiesCount = 0;
         this.maxEnemies = 10;
+        // Add health system
+        this.health = 100;
+        this.maxHealth = 100;
         // NEW: Track how many enemies have been spawned in the current wave
         this.enemiesSpawned = 0;
         // NEW: Delay between waves (milliseconds)
@@ -20,6 +23,7 @@ export class GameState {
         this.scoreElement = document.getElementById('score');
         this.waveElement = document.getElementById('wave');
         this.enemiesElement = document.getElementById('enemies');
+        this.healthElement = document.getElementById('health');
         
         // Initialize HUD
         this.updateHUD();
@@ -100,12 +104,33 @@ export class GameState {
     canAfford(cost) {
         return this.money >= cost;
     }
+
+    // Add health-related methods
+    getHealth() {
+        return this.health;
+    }
+
+    getMaxHealth() {
+        return this.maxHealth;
+    }
+
+    loseHealth(amount) {
+        this.health = Math.max(0, this.health - amount);
+        this.updateHUD();
+        return this.health <= 0; // Return true if player died
+    }
+
+    healHealth(amount) {
+        this.health = Math.min(this.maxHealth, this.health + amount);
+        this.updateHUD();
+    }
     
     updateHUD() {
         if (this.moneyElement) this.moneyElement.textContent = this.money;
         if (this.scoreElement) this.scoreElement.textContent = this.score;
         if (this.waveElement) this.waveElement.textContent = this.wave;
         if (this.enemiesElement) this.enemiesElement.textContent = this.enemiesCount;
+        if (this.healthElement) this.healthElement.textContent = this.health;
         
         // Update phase indicator if it exists
         const phaseElement = document.getElementById('phase');
@@ -148,6 +173,8 @@ export class GameState {
             wave: this.wave,
             enemiesCount: this.enemiesCount,
             maxEnemies: this.maxEnemies,
+            health: this.health,
+            maxHealth: this.maxHealth,
             // NEW: Persist enemiesSpawned so reloading mid-wave keeps correct state
             enemiesSpawned: this.enemiesSpawned,
             // NEW: Persist waveCooldownEnd for mid-wave delays
@@ -167,6 +194,8 @@ export class GameState {
             this.wave = data.wave;
             this.enemiesCount = data.enemiesCount;
             this.maxEnemies = data.maxEnemies;
+            this.health = data.health || this.maxHealth; // Default to max health if not saved
+            this.maxHealth = data.maxHealth || this.maxHealth;
             // NEW: Restore enemiesSpawned (fallback to 0 for old saves)
             this.enemiesSpawned = data.enemiesSpawned || 0;
             // NEW: Restore cooldown timer

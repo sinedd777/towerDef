@@ -78,15 +78,22 @@ export class InputManager {
         if (!this.selectedTowerData || !this.previewTower) return;
         
         const isValid = this.isValidTowerPosition(gridX, gridZ);
-        const canAfford = this.gameState.getMoney() >= this.selectedTowerData.cost;
+        const canAfford = this.gameState.getMoney() >= (this.selectedTowerData?.cost || Infinity);
         
-        const color = !canAfford ? 0xff0000 : (isValid ? this.selectedTowerData.color : 0xff0000);
+        // Default to blue if no color specified
+        const defaultColor = 0x4444ff;
+        const color = !canAfford ? 0xff0000 : (isValid ? (this.selectedTowerData?.color || defaultColor) : 0xff0000);
         const opacity = !canAfford ? 0.3 : (isValid ? 0.5 : 0.3);
         
-        this.previewTower.mesh.material.color.setHex(color);
-        this.previewTower.mesh.material.opacity = opacity;
-        this.previewTower.rangeIndicator.material.color.setHex(color);
-        this.previewTower.rangeIndicator.material.opacity = opacity * 0.4;
+        if (this.previewTower.mesh?.material) {
+            this.previewTower.mesh.material.color.setHex(color);
+            this.previewTower.mesh.material.opacity = opacity;
+        }
+        
+        if (this.previewTower.rangeIndicator?.material) {
+            this.previewTower.rangeIndicator.material.color.setHex(color);
+            this.previewTower.rangeIndicator.material.opacity = opacity * 0.4;
+        }
     }
 
     onMouseClick(event) {

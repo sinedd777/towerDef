@@ -11,6 +11,8 @@ class PlayerHandler {
         socket.on('player:update_profile', (data) => this.handleUpdateProfile(socket, data));
         socket.on('player:ping', () => this.handlePing(socket));
         socket.on('player:get_stats', () => this.handleGetStats(socket));
+        socket.on('matchmaking:quick_match', (data) => this.handleQuickMatch(socket, data));
+        socket.on('matchmaking:cancel', () => this.handleCancelMatchmaking(socket));
     }
     
     handleConnection(socket) {
@@ -80,6 +82,80 @@ class PlayerHandler {
         } catch (error) {
             this.logger.error('Error getting player stats:', error);
             socket.emit('player:error', { message: 'Failed to get stats' });
+        }
+    }
+
+    handleQuickMatch(socket, data) {
+        try {
+            this.logger.info(`Player ${socket.id} requested quick match`);
+            
+            const player = this.connectedPlayers.get(socket.id);
+            if (!player) {
+                this.logger.error(`Player ${socket.id} not found for quick match`);
+                socket.emit('matchmaking:error', { message: 'Player not found' });
+                return;
+            }
+
+            this.logger.info(`Starting quick match for player ${socket.id} (${player.name})`);
+            const result = this.sessionHandler.matchmakingManager.quickMatch(
+                socket.id,
+                {
+                    name: player.name,
+                    rating: data.rating || 1000
+                },
+                this.sessionHandler
+            );
+
+            if (result.success) {
+                if (result.joined) {
+                    this.logger.info(`Player ${socket.id} joined existing session ${result.sessionId}`);
+                    socket.emit('matchmaking:joined', {
+                        sessionId: result.sessionId
+                    });
+                } else if (result.created && result.match) {
+                    this.logger.info(`New match created for player ${socket.id}: ${result.match.matchId}`);
+                    if (!result.match.sessionId) {
+                        this.logger.error('Match created without session ID:', result.match.matchId);
+                        socket.emit('matchmaking:error', { message: 'Invalid match data' });
+                        return;
+                    }
+                    socket.emit('matchmaking:matched', {
+                        sessionId: result.match.sessionId,
+                        match: result.match
+                    });
+                } else {
+                    this.logger.info(`Player ${socket.id} added to matchmaking queue (position: ${result.position})`);
+                    socket.emit('matchmaking:queued', {
+                        position: result.position
+                    });
+                }
+            } else if (result.reason === 'queued') {
+                this.logger.info(`Player ${socket.id} added to matchmaking queue (position: ${result.position})`);
+                socket.emit('matchmaking:queued', {
+                    position: result.position
+                });
+            } else {
+                this.logger.error(`Matchmaking failed for player ${socket.id}: ${result.reason}`);
+                socket.emit('matchmaking:error', {
+                    message: result.reason || 'Failed to start matchmaking'
+                });
+            }
+        } catch (error) {
+            this.logger.error('Error in quick match:', error);
+            socket.emit('matchmaking:error', {
+                message: 'Internal server error'
+            });
+        }
+    }
+
+    handleCancelMatchmaking(socket) {
+        try {
+            this.logger.info(`Player ${socket.id} cancelled matchmaking`);
+            this.sessionHandler.matchmakingManager.removeFromQueue(socket.id);
+            socket.emit('matchmaking:cancelled');
+        } catch (error) {
+            this.logger.error('Error cancelling matchmaking:', error);
+            socket.emit('matchmaking:error', { message: 'Failed to cancel matchmaking' });
         }
     }
     

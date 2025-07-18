@@ -4,7 +4,7 @@ import { loadTexture } from './utils/textureLoader.js';
 import { assetManager } from './managers/AssetManager.js';
 
 // Preload texture (fallback for basic mode)
-const ENEMY_TEX = loadTexture('https://threejs.org/examples/textures/planets/jupiter.jpg');
+const ENEMY_TEX = new THREE.MeshPhongMaterial({ color: 0xff0000 });
 
 export class Enemy {
     constructor(waypoints, wave = 1) {

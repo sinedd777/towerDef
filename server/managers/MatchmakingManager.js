@@ -8,10 +8,17 @@ class MatchmakingManager {
         this.cleanupInterval = setInterval(() => {
             this.cleanupExpiredRequests();
         }, 10000); // Every 10 seconds
+
+        // Process matchmaking queue periodically
+        this.matchmakingInterval = setInterval(() => {
+            this.processMatchmaking();
+        }, 2000); // Every 2 seconds
     }
     
     // Add player to matchmaking queue
     addToQueue(socketId, playerData, preferences = {}) {
+        console.log(`Adding player ${socketId} to matchmaking queue with data:`, playerData);
+        
         const request = {
             socketId,
             playerData,
@@ -27,14 +34,23 @@ class MatchmakingManager {
         };
         
         this.matchmakingQueue.set(socketId, request);
+        console.log(`Queue size after adding player: ${this.matchmakingQueue.size}`);
         
         // Try to find immediate match
         const match = this.findMatch(request);
         if (match) {
-            return this.createMatch(match);
+            console.log(`Immediate match found for player ${socketId} with:`, match.map(p => p.socketId));
+            const matchResult = this.createMatch(match);
+            if (matchResult.success) {
+                // Notify all players in the match (important for immediate matches)
+                this.onMatchFound(matchResult.match);
+            }
+            return matchResult;
         }
         
-        return { success: false, reason: 'added_to_queue', position: this.getQueuePosition(socketId) };
+        const position = this.getQueuePosition(socketId);
+        console.log(`Player ${socketId} added to queue at position ${position}`);
+        return { success: false, reason: 'added_to_queue', position };
     }
     
     // Remove player from matchmaking queue
@@ -47,13 +63,17 @@ class MatchmakingManager {
         const compatiblePlayers = [request];
         const maxPlayers = request.preferences.maxPlayers;
         
+        this.logger.debug(`Looking for ${maxPlayers} players for match`);
+        
         for (const [otherId, otherRequest] of this.matchmakingQueue) {
             if (otherId === request.socketId) continue;
             
             if (this.areCompatible(request, otherRequest)) {
+                this.logger.debug(`Found compatible player ${otherId}`);
                 compatiblePlayers.push(otherRequest);
                 
                 if (compatiblePlayers.length >= maxPlayers) {
+                    this.logger.info(`Found enough players for match: ${compatiblePlayers.map(p => p.socketId).join(', ')}`);
                     break;
                 }
             }
@@ -108,8 +128,23 @@ class MatchmakingManager {
             })),
             createdAt: Date.now(),
             gameMode: players[0].preferences.gameMode,
-            maxPlayers: players[0].preferences.maxPlayers
+            maxPlayers: players[0].preferences.maxPlayers,
+            sessionId: null  // Will be set when session is created
         };
+        
+        // Create a new game session for the match
+        const session = this.sessionHandler.createSession({
+            maxPlayers: match.maxPlayers,
+            gameMode: match.gameMode
+        });
+
+        if (!session) {
+            this.logger.error('Failed to create session for match:', match.matchId);
+            return { success: false, reason: 'failed_to_create_session' };
+        }
+
+        // Set the session ID in the match object
+        match.sessionId = session.sessionId;
         
         // Remove players from queue
         for (const player of players) {
@@ -121,10 +156,13 @@ class MatchmakingManager {
     
     // Quick match - find any available game or create new one
     quickMatch(socketId, playerData, sessionHandler) {
+        console.log(`Quick match request from player ${socketId} with data:`, playerData);
+        
         // First try to find an existing waiting session
         const availableSession = sessionHandler.findAvailableSession();
         
         if (availableSession) {
+            console.log(`Found available session ${availableSession.sessionId} for player ${socketId}`);
             const result = availableSession.addPlayer(socketId, playerData);
             if (result.success) {
                 return {
@@ -136,13 +174,14 @@ class MatchmakingManager {
         }
         
         // If no available session, add to matchmaking queue
+        console.log(`No available session found, adding player ${socketId} to matchmaking queue`);
         const matchResult = this.addToQueue(socketId, playerData, { 
             maxPlayers: 2, 
             gameMode: 'competitive' 
         });
         
         if (matchResult.success) {
-            // Match found immediately
+            console.log(`Immediate match found for player ${socketId}`);
             return {
                 success: true,
                 match: matchResult.match,
@@ -159,13 +198,19 @@ class MatchmakingManager {
     
     // Periodic matchmaking - run every few seconds to find new matches
     processMatchmaking() {
+        if (this.matchmakingQueue.size === 0) return;
+        
+        console.log(`Processing matchmaking queue (${this.matchmakingQueue.size} players)`);
         const processedPlayers = new Set();
         
         for (const [socketId, request] of this.matchmakingQueue) {
             if (processedPlayers.has(socketId)) continue;
             
+            console.log(`Looking for match for player ${socketId}`);
             const match = this.findMatch(request);
+            
             if (match) {
+                console.log(`Match found for players: ${match.map(p => p.socketId).join(', ')}`);
                 // Mark all players in this match as processed
                 for (const player of match) {
                     processedPlayers.add(player.socketId);
@@ -182,6 +227,7 @@ class MatchmakingManager {
                 request.attempts++;
                 
                 if (Date.now() - request.createdAt > this.matchmakingTimeout) {
+                    console.log(`Matchmaking timeout for player ${socketId}`);
                     // Timeout - remove from queue
                     this.matchmakingQueue.delete(socketId);
                     this.onMatchmakingTimeout(socketId, request);
@@ -315,10 +361,55 @@ class MatchmakingManager {
         return { success: false, reason: 'added_to_priority_queue' };
     }
     
+    // Set dependencies needed for matchmaking
+    setDependencies(sessionHandler, io, logger) {
+        this.sessionHandler = sessionHandler;
+        this.io = io;
+        this.logger = logger;
+
+        // Override onMatchFound to handle match creation
+        this.onMatchFound = (match) => {
+            if (!match.sessionId) {
+                this.logger.error('Match has no session ID:', match.matchId);
+                return;
+            }
+
+            // Get the session that was created during match creation
+            const session = this.sessionHandler.sessions.get(match.sessionId);
+            if (!session) {
+                this.logger.error('Session not found for match:', match.matchId);
+                return;
+            }
+
+            // Add all players to the session
+            for (const player of match.players) {
+                const result = session.addPlayer(player.socketId, player.playerData);
+                if (result.success) {
+                    // Notify player about the match with both session ID and match data
+                    this.io.to(player.socketId).emit('matchmaking:matched', {
+                        sessionId: match.sessionId,  // Include at top level for backward compatibility
+                        match: match  // Include match object with session ID
+                    });
+                }
+            }
+        };
+
+        // Override onMatchmakingTimeout to use logger
+        this.onMatchmakingTimeout = (socketId, request) => {
+            this.logger.info(`Matchmaking timeout for player: ${socketId}`);
+            this.io.to(socketId).emit('matchmaking:timeout', {
+                reason: 'No suitable match found within timeout period'
+            });
+        };
+    }
+    
     // Cleanup on shutdown
     destroy() {
         if (this.cleanupInterval) {
             clearInterval(this.cleanupInterval);
+        }
+        if (this.matchmakingInterval) {
+            clearInterval(this.matchmakingInterval);
         }
         
         this.matchmakingQueue.clear();

@@ -24,6 +24,26 @@ class SessionHandler {
         socket.on('game:ready', (data) => this.handlePlayerReady(socket, data));
     }
     
+    // Create a new game session
+    createSession(options = {}) {
+        try {
+            const session = new GameSession(null, options.maxPlayers || 2);
+            session.setIO(this.io);
+            
+            if (options.gameMode) {
+                session.gameMode = options.gameMode;
+            }
+            
+            this.sessions.set(session.sessionId, session);
+            this.logger.info(`Session created: ${session.sessionId}`);
+            
+            return session;
+        } catch (error) {
+            this.logger.error('Error creating session:', error);
+            return null;
+        }
+    }
+    
     handleCreateSession(socket, data) {
         try {
             const session = new GameSession(null, data.maxPlayers || 2);
