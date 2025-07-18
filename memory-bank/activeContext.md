@@ -1,7 +1,7 @@
 # Active Context
 
 ## Current Focus
-The project has been successfully upgraded from basic geometric shapes to professional 3D models using the Kenney Tower Defense Kit. The game now features:
+The project has been successfully upgraded from basic geometric shapes to professional 3D models using the Kenney Tower Defense Kit, and now features an advanced pathfinding system with curved movement. The game now features:
 - Complete 3D asset integration with GLB model loading
 - UFO enemy models with wave-based variations
 - Modular tower system with base + weapon combinations
@@ -10,6 +10,9 @@ The project has been successfully upgraded from basic geometric shapes to profes
 - Enhanced lighting and visual effects
 - Object pooling for performance optimization
 - Particle system for explosions, impact effects, and death animations
+- Advanced curved pathfinding with Catmull-Rom splines
+- Radius-aware collision detection maintaining 0.5 unit clearance
+- Adaptive speed control based on path curvature
 
 ## Recent Changes
 1. **Asset Management System**: Created comprehensive AssetManager with GLTFLoader integration
@@ -22,6 +25,7 @@ The project has been successfully upgraded from basic geometric shapes to profes
 8. **Performance Optimization**: Object pooling system for projectiles
 9. **Visual Effects**: Particle system with explosions, sparks, and death effects
 10. **Playing Card UI**: Implemented sophisticated Tetris shape playing card interface with 3D stack effects, corner indicators, center shape display, hover instructions panel, and smooth card flip animations
+11. **Enhanced Pathfinding**: Complete pathfinding rewrite with 0.25 unit grid resolution, Catmull-Rom spline curves, radius-aware collision detection, and adaptive speed control
 
 ## Active Decisions
 1. Tower Balance
@@ -33,11 +37,14 @@ The project has been successfully upgraded from basic geometric shapes to profes
    - Regular spawning interval (2 seconds)
    - Wave progression every 10 kills
    - Health scaling with waves
+   - Curved movement with speed adaptation (50%-120% range)
+   - 0.5 unit clearance from all boundaries and obstacles
 
 3. UI/UX
    - Drag-and-drop tower placement
    - Clear visual feedback
    - Intuitive controls
+   - Enhanced debug information showing curve data
 
 ## Current Considerations
 1. Performance Optimization

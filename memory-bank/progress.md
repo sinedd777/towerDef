@@ -20,7 +20,11 @@
 
 ### Enemy System ✅
 - Enemy spawning
-- Pathfinding
+- Pathfinding with enhanced A* algorithm
+- Curved movement using Catmull-Rom splines
+- Radius-aware collision detection (0.5 unit clearance)
+- Adaptive speed control based on path curvature
+- Enhanced collision avoidance with curve preservation
 - Health system
 - Death handling
 - Wave progression
@@ -41,7 +45,9 @@
 - Tower targeting
 - Collision detection
 - Maze building phase with Tetris shapes
-- Dynamic pathfinding with A* algorithm
+- Advanced pathfinding with enhanced A* algorithm
+- Curved movement with 0.5 radius boundary maintenance
+- Adaptive speed control and curve-aware collision avoidance
 - Dual-phase gameplay system
 
 ## In Progress Features 🚧
@@ -111,6 +117,18 @@
 - [x] Function scope error with animate function
 - [x] MIME type issues with model files
 - [x] Static asset serving configuration
+
+## Recently Implemented Features ✅
+
+### Enhanced Pathfinding System (Latest)
+- [x] Fine-grained grid resolution (0.25 units) for precise control
+- [x] Radius-aware boundary and obstacle detection with exact 0.5 unit clearance
+- [x] Catmull-Rom spline interpolation for smooth curved enemy movement
+- [x] Adaptive speed control based on path curvature (50%-120% speed range)
+- [x] Enhanced enemy collision avoidance that preserves curved paths
+- [x] Path metadata system with turn angles, curvature, and speed multipliers
+- [x] Curve-preserving avoidance forces with perpendicular bias
+- [x] Enhanced debug information showing curve data and speed modulation
 
 ## Next Milestone Goals 🎯
 

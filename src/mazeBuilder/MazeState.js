@@ -100,40 +100,59 @@ export class MazeState {
         this.restrictedAreaMarkers.forEach(marker => this.scene.remove(marker));
         this.restrictedAreaMarkers = [];
 
-        // Create markers for edge boundaries only
+        // Create a single clean boundary outline instead of individual markers
+        this.createBoundaryOutline();
+        
+        // Add visual indicators for the pathfinding clearance zone
+        this.createClearanceIndicators();
+    }
+    
+    createBoundaryOutline() {
+        // Create a clean boundary outline using line geometry
         const halfGrid = this.gridSize / 2;
-        const markerGeometry = new THREE.BoxGeometry(1, 0.1, 1);
-        const markerMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x000000, 
+        const boundaryPoints = [
+            new THREE.Vector3(-halfGrid + 0.5, 0.02, -halfGrid + 0.5), // Top-left
+            new THREE.Vector3(halfGrid - 0.5, 0.02, -halfGrid + 0.5),  // Top-right
+            new THREE.Vector3(halfGrid - 0.5, 0.02, halfGrid - 0.5),   // Bottom-right
+            new THREE.Vector3(-halfGrid + 0.5, 0.02, halfGrid - 0.5),  // Bottom-left
+            new THREE.Vector3(-halfGrid + 0.5, 0.02, -halfGrid + 0.5)  // Back to start
+        ];
+        
+        const boundaryGeometry = new THREE.BufferGeometry().setFromPoints(boundaryPoints);
+        const boundaryMaterial = new THREE.LineBasicMaterial({ 
+            color: 0x666666, 
             transparent: true, 
-            opacity: 0.8
+            opacity: 0.8,
+            linewidth: 2
         });
-
-        for (let i = -halfGrid; i < halfGrid; i++) {
-            // Top edge
-            const topMarker = new THREE.Mesh(markerGeometry, markerMaterial);
-            topMarker.position.set(i + 0.5, 0, -halfGrid + 0.5);
-            this.scene.add(topMarker);
-            this.restrictedAreaMarkers.push(topMarker);
-
-            // Bottom edge
-            const bottomMarker = new THREE.Mesh(markerGeometry, markerMaterial);
-            bottomMarker.position.set(i + 0.5, 0, halfGrid - 0.5);
-            this.scene.add(bottomMarker);
-            this.restrictedAreaMarkers.push(bottomMarker);
-
-            // Left edge
-            const leftMarker = new THREE.Mesh(markerGeometry, markerMaterial);
-            leftMarker.position.set(-halfGrid + 0.5, 0, i + 0.5);
-            this.scene.add(leftMarker);
-            this.restrictedAreaMarkers.push(leftMarker);
-
-            // Right edge
-            const rightMarker = new THREE.Mesh(markerGeometry, markerMaterial);
-            rightMarker.position.set(halfGrid - 0.5, 0, i + 0.5);
-            this.scene.add(rightMarker);
-            this.restrictedAreaMarkers.push(rightMarker);
-        }
+        
+        const boundaryLine = new THREE.Line(boundaryGeometry, boundaryMaterial);
+        this.scene.add(boundaryLine);
+        this.restrictedAreaMarkers.push(boundaryLine);
+    }
+    
+    createClearanceIndicators() {
+        // Create subtle indicators showing the actual pathfinding clearance zone
+        const halfGrid = this.gridSize / 2;
+        const clearance = 0.5; // Match pathfinding clearance
+        
+        // Create a wireframe box showing the valid pathfinding area
+        const clearanceGeometry = new THREE.BoxGeometry(
+            this.gridSize - (clearance * 2), 
+            0.02, 
+            this.gridSize - (clearance * 2)
+        );
+        const clearanceMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0x004400, 
+            transparent: true, 
+            opacity: 0.2,
+            wireframe: true
+        });
+        
+        const clearanceIndicator = new THREE.Mesh(clearanceGeometry, clearanceMaterial);
+        clearanceIndicator.position.set(0, 0.03, 0);
+        this.scene.add(clearanceIndicator);
+        this.restrictedAreaMarkers.push(clearanceIndicator);
     }
 
     selectShape(shape) {
@@ -476,12 +495,22 @@ export class MazeState {
 
     // Clean up maze builder
     cleanup() {
-        this.clearPreview();
-        this.gridBlocks.forEach(block => this.scene.remove(block));
+        // Clear all visual elements from the scene
+        this.restrictedAreaMarkers.forEach(marker => {
+            this.scene.remove(marker);
+            if (marker.geometry) marker.geometry.dispose();
+            if (marker.material) marker.material.dispose();
+        });
+        this.restrictedAreaMarkers = [];
+        
+        this.gridBlocks.forEach(block => {
+            this.scene.remove(block);
+            if (block.geometry) block.geometry.dispose();
+            if (block.material) block.material.dispose();
+        });
         this.gridBlocks = [];
         
-        // Clean up restricted area markers
-        this.restrictedAreaMarkers.forEach(marker => this.scene.remove(marker));
-        this.restrictedAreaMarkers = [];
+        // Clear preview
+        this.clearPreview();
     }
 } 

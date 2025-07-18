@@ -121,14 +121,14 @@ export class Enemy {
             return;
         }
         
-        // Calculate upcoming turn influence on speed
-        this.updateTurnDetection();
+        // Enhanced turn detection using pathfinding metadata
+        this.updateCurveBasedSpeed();
         
-        // Calculate collision avoidance forces
-        this.calculateAvoidanceForce(allEnemies);
+        // Calculate collision avoidance forces with curve preservation
+        this.calculateCurveAwareAvoidance(allEnemies);
         
-        // Update movement using smooth interpolation between waypoints
-        this.updateSmoothMovement(deltaTime);
+        // Update movement using enhanced smooth interpolation
+        this.updateEnhancedMovement(deltaTime);
         
         // Add UFO rotation animation if model is loaded
         if (this.isModelLoaded && this.mesh.children.length > 0) {
@@ -144,7 +144,109 @@ export class Enemy {
         this.updateDebugInfo();
     }
     
-    updateSmoothMovement(deltaTime) {
+    updateCurveBasedSpeed() {
+        this.isNearTurn = false;
+        this.currentTurnAngle = 0;
+        let curveSpeedModifier = 1.0;
+        
+        // Check current waypoint for curve metadata
+        if (this.currentSegmentIndex < this.waypoints.length) {
+            const currentWaypoint = this.waypoints[this.currentSegmentIndex];
+            
+            // Use pathfinding metadata if available
+            if (currentWaypoint.curvature !== undefined) {
+                // Apply curve-based speed control
+                curveSpeedModifier = currentWaypoint.speedMultiplier || 1.0;
+                this.currentTurnAngle = currentWaypoint.turnAngle || 0;
+                this.isNearTurn = currentWaypoint.isSharpTurn || false;
+            }
+        }
+        
+        // Look ahead for upcoming curves (enhanced prediction)
+        let lookAheadDistance = 0;
+        let checkIndex = this.currentSegmentIndex;
+        const maxLookAhead = this.upcomingTurnDistance;
+        
+        while (checkIndex < this.waypoints.length - 1 && lookAheadDistance < maxLookAhead) {
+            const waypoint = this.waypoints[checkIndex];
+            const nextWaypoint = this.waypoints[checkIndex + 1];
+            
+            const currentPos = waypoint.position || waypoint;
+            const nextPos = nextWaypoint.position || nextWaypoint;
+            
+            const segmentLength = currentPos.distanceTo(nextPos);
+            lookAheadDistance += segmentLength;
+            
+            // Use enhanced curve metadata for prediction
+            if (nextWaypoint.curvature !== undefined && nextWaypoint.curvature > 0.1) {
+                this.isNearTurn = true;
+                this.currentTurnAngle = Math.max(this.currentTurnAngle, nextWaypoint.turnAngle || 0);
+                
+                // Apply distance-based fade for upcoming curves
+                const distanceFactor = Math.max(0.3, 1.0 - (lookAheadDistance / maxLookAhead));
+                const upcomingSpeedModifier = nextWaypoint.speedMultiplier || 1.0;
+                curveSpeedModifier = Math.min(curveSpeedModifier, 
+                    1.0 - (1.0 - upcomingSpeedModifier) * distanceFactor);
+                break;
+            }
+            
+            checkIndex++;
+        }
+        
+        // Apply the curve-based speed modification
+        this.currentSpeed = this.speed * curveSpeedModifier;
+    }
+    
+    calculateCurveAwareAvoidance(allEnemies) {
+        this.avoidanceForce.set(0, 0, 0);
+        
+        // Get current movement direction for curve preservation
+        const currentWaypoint = this.waypoints[this.currentSegmentIndex];
+        const nextWaypoint = this.waypoints[Math.min(this.currentSegmentIndex + 1, this.waypoints.length - 1)];
+        
+        const currentPos = currentWaypoint.position || currentWaypoint;
+        const nextPos = nextWaypoint.position || nextWaypoint;
+        const pathDirection = new THREE.Vector3().subVectors(nextPos, currentPos).normalize();
+        
+        for (const otherEnemy of allEnemies) {
+            if (otherEnemy === this || !otherEnemy.isAlive()) continue;
+            
+            const distance = this.mesh.position.distanceTo(otherEnemy.mesh.position);
+            
+            if (distance < this.minSeparationDistance && distance > 0) {
+                // Calculate repulsion force
+                const repulsion = new THREE.Vector3()
+                    .subVectors(this.mesh.position, otherEnemy.mesh.position)
+                    .normalize();
+                
+                // Enhanced force calculation with exponential falloff
+                const forceMagnitude = Math.pow((this.minSeparationDistance - distance) / this.minSeparationDistance, 2);
+                repulsion.multiplyScalar(forceMagnitude * 3.0);
+                
+                // Preserve curve direction by biasing avoidance perpendicular to path
+                const perpendicular = new THREE.Vector3(-pathDirection.z, 0, pathDirection.x);
+                const perpendicularComponent = perpendicular.dot(repulsion);
+                const parallelComponent = pathDirection.dot(repulsion);
+                
+                // Favor perpendicular avoidance to maintain path following
+                repulsion.copy(perpendicular).multiplyScalar(perpendicularComponent * 1.5);
+                repulsion.add(pathDirection.clone().multiplyScalar(parallelComponent * 0.3));
+                
+                // Reduce Y component to keep movement horizontal
+                repulsion.y *= 0.1;
+                
+                this.avoidanceForce.add(repulsion);
+            }
+        }
+        
+        // Limit avoidance force to prevent breaking the curved path
+        const maxAvoidanceForce = 1.0; // Reduced to preserve curves better
+        if (this.avoidanceForce.length() > maxAvoidanceForce) {
+            this.avoidanceForce.normalize().multiplyScalar(maxAvoidanceForce);
+        }
+    }
+    
+    updateEnhancedMovement(deltaTime) {
         if (this.currentSegmentIndex >= this.waypoints.length - 1) {
             this.hasReachedEndFlag = true;
             return;
@@ -161,123 +263,50 @@ export class Enemy {
         const segmentLength = segmentDirection.length();
         segmentDirection.normalize();
         
-        // Calculate speed modifiers
-        let speedModifier = 1.0;
-        
-        // Turn speed reduction with quadratic scaling for smoother transitions
-        if (this.isNearTurn && this.currentTurnAngle > this.minTurnAngle) {
-            // Normalize angle between minTurnAngle and PI
-            const normalizedAngle = (this.currentTurnAngle - this.minTurnAngle) / (Math.PI - this.minTurnAngle);
-            // Apply quadratic easing for smoother speed reduction
-            const turnFactor = Math.max(0.4, 1.0 - (normalizedAngle * normalizedAngle) * this.turnSpeedReduction);
-            speedModifier *= turnFactor;
-        }
-        
-        // Status effect speed modifications (handled in updateStatusEffects)
-        this.currentSpeed = this.speed * speedModifier;
-        
-        // Calculate velocity including avoidance
+        // Enhanced velocity calculation with curve-aware speed
         this.velocity.copy(segmentDirection);
         this.velocity.multiplyScalar(this.currentSpeed);
         
-        // Apply avoidance force (but keep it limited to not break path following)
-        const avoidanceStrength = 0.3;
+        // Apply curve-preserving avoidance force
+        const avoidanceStrength = 0.2; // Reduced to better preserve curves
         this.velocity.add(this.avoidanceForce.clone().multiplyScalar(avoidanceStrength));
         
         // Move along the path
         const movement = this.velocity.clone().multiplyScalar(deltaTime);
         this.mesh.position.add(movement);
         
-        // Update progress along current segment
+        // Enhanced progress calculation with curve support
         const currentSegmentPos = new THREE.Vector3().subVectors(this.mesh.position, currentPos);
         this.pathProgress = currentSegmentPos.dot(segmentDirection) / segmentLength;
         
-        // Check if we've reached the next waypoint
-        if (this.pathProgress >= 1.0) {
-            // Snap to exact waypoint position (but allow slight avoidance offset)
+        // Check if we've reached the next waypoint with curve tolerance
+        const distanceToNext = this.mesh.position.distanceTo(nextPos);
+        const progressThreshold = Math.max(0.9, 1.0 - (segmentLength * 0.1)); // Dynamic threshold
+        
+        if (this.pathProgress >= progressThreshold || distanceToNext < 0.2) {
+            // Smooth transition to next waypoint with curve correction
             const targetPos = nextPos.clone();
             
-            // Keep some avoidance offset but ensure forward progress
-            const avoidanceOffset = this.avoidanceForce.clone().multiplyScalar(0.1);
+            // Minimal avoidance offset that doesn't break curves
+            const avoidanceOffset = this.avoidanceForce.clone().multiplyScalar(0.05);
             avoidanceOffset.y = 0; // Keep Y level
             targetPos.add(avoidanceOffset);
             
-            this.mesh.position.copy(targetPos);
+            // Smooth interpolation to target position
+            const lerpFactor = 0.3; // Smooth transition
+            this.mesh.position.lerp(targetPos, lerpFactor);
             
-            // Move to next segment
-            this.currentSegmentIndex++;
-            this.pathProgress = 0;
-            
-            if (this.currentSegmentIndex >= this.waypoints.length - 1) {
-                this.hasReachedEndFlag = true;
-            } else {
-                this.calculateDirection();
+            // Move to next segment when close enough
+            if (distanceToNext < 0.15) {
+                this.currentSegmentIndex++;
+                this.pathProgress = 0;
+                
+                if (this.currentSegmentIndex >= this.waypoints.length - 1) {
+                    this.hasReachedEndFlag = true;
+                } else {
+                    this.calculateDirection();
+                }
             }
-        }
-    }
-    
-    updateTurnDetection() {
-        this.isNearTurn = false;
-        this.currentTurnAngle = 0;
-        
-        // Look ahead for upcoming turns
-        let lookAheadDistance = 0;
-        let checkIndex = this.currentSegmentIndex;
-        
-        while (checkIndex < this.waypoints.length - 1 && lookAheadDistance < this.upcomingTurnDistance) {
-            const waypoint = this.waypoints[checkIndex];
-            const nextWaypoint = this.waypoints[checkIndex + 1];
-            
-            const currentPos = waypoint.position || waypoint;
-            const nextPos = nextWaypoint.position || nextWaypoint;
-            
-            const segmentLength = currentPos.distanceTo(nextPos);
-            lookAheadDistance += segmentLength;
-            
-            // Check if this waypoint has turn information
-            if (waypoint.isSharpTurn || (waypoint.turnAngle && waypoint.turnAngle > Math.PI / 6)) {
-                this.isNearTurn = true;
-                this.currentTurnAngle = waypoint.turnAngle || 0;
-                
-                // Adjust turn effect based on distance
-                const distanceFactor = Math.max(0.2, 1.0 - (lookAheadDistance / this.upcomingTurnDistance));
-                this.currentTurnAngle *= distanceFactor;
-                break;
-            }
-            
-            checkIndex++;
-        }
-    }
-    
-    calculateAvoidanceForce(allEnemies) {
-        this.avoidanceForce.set(0, 0, 0);
-        
-        for (const otherEnemy of allEnemies) {
-            if (otherEnemy === this || !otherEnemy.isAlive()) continue;
-            
-            const distance = this.mesh.position.distanceTo(otherEnemy.mesh.position);
-            
-            if (distance < this.minSeparationDistance && distance > 0) {
-                // Calculate repulsion force
-                const repulsion = new THREE.Vector3()
-                    .subVectors(this.mesh.position, otherEnemy.mesh.position)
-                    .normalize();
-                
-                // Stronger force when closer
-                const forceMagnitude = (this.minSeparationDistance - distance) / this.minSeparationDistance;
-                repulsion.multiplyScalar(forceMagnitude * 2.0);
-                
-                // Reduce Y component to keep movement horizontal
-                repulsion.y *= 0.1;
-                
-                this.avoidanceForce.add(repulsion);
-            }
-        }
-        
-        // Limit avoidance force to prevent path breaking
-        const maxAvoidanceForce = 1.5;
-        if (this.avoidanceForce.length() > maxAvoidanceForce) {
-            this.avoidanceForce.normalize().multiplyScalar(maxAvoidanceForce);
         }
     }
     
@@ -408,16 +437,34 @@ export class Enemy {
         let statusEffects = Array.from(this.activeEffects.keys()).join(', ');
         let effectsText = statusEffects ? `Effects: ${statusEffects}` : '';
         
+        // Enhanced curve and speed information
+        const baseSpeedPercent = Math.round((this.currentSpeed / this.baseSpeed) * 100);
+        
+        // Get current waypoint curve information
+        let curvatureText = '';
+        let speedMultiplierText = '';
+        if (this.currentSegmentIndex < this.waypoints.length) {
+            const currentWaypoint = this.waypoints[this.currentSegmentIndex];
+            if (currentWaypoint.curvature !== undefined) {
+                const curvaturePercent = Math.round(currentWaypoint.curvature * 100);
+                curvatureText = `Curve: ${curvaturePercent}%`;
+                
+                const speedMult = Math.round((currentWaypoint.speedMultiplier || 1.0) * 100);
+                speedMultiplierText = `Path Speed: ${speedMult}%`;
+            }
+        }
+        
         // Convert turn angle to degrees for display
         const turnAngleDegrees = Math.round(this.currentTurnAngle * (180 / Math.PI));
         let turnText = this.isNearTurn ? `Turn: ${turnAngleDegrees}°` : '';
-        let speedText = `Speed: ${Math.round((this.currentSpeed / this.baseSpeed) * 100)}%`;
         
         this.debugLabel.element.innerHTML = `
             Wave ${this.wave}<br>
             HP: ${healthPercent}%<br>
-            ${speedText}<br>
-            ${turnText}<br>
+            Speed: ${baseSpeedPercent}%<br>
+            ${speedMultiplierText ? speedMultiplierText + '<br>' : ''}
+            ${curvatureText ? curvatureText + '<br>' : ''}
+            ${turnText ? turnText + '<br>' : ''}
             ${effectsText}
         `;
         
