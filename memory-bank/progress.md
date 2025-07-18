@@ -32,6 +32,7 @@
 - Wave counter
 - Score tracking
 - Drag-and-drop controls
+- Playing card interface for Tetris shape selection with 3D effects and animations
 
 ### Game Mechanics ✅
 - Resource management

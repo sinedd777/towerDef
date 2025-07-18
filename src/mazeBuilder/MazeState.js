@@ -100,29 +100,14 @@ export class MazeState {
         this.restrictedAreaMarkers.forEach(marker => this.scene.remove(marker));
         this.restrictedAreaMarkers = [];
 
-        // Create markers for start and end areas
-        const startMarker = this.createAreaMarker(
-            this.pathStartArea.x,
-            this.pathStartArea.z,
-            this.pathStartArea.width,
-            this.pathStartArea.height,
-            0xff0000, // Red for restricted
-            'Start'
-        );
-        
-        const endMarker = this.createAreaMarker(
-            this.pathEndArea.x,
-            this.pathEndArea.z,
-            this.pathEndArea.width,
-            this.pathEndArea.height,
-            0xff0000, // Red for restricted
-            'End'
-        );
-
-        // Create markers for edge boundaries
+        // Create markers for edge boundaries only
         const halfGrid = this.gridSize / 2;
         const markerGeometry = new THREE.BoxGeometry(1, 0.1, 1);
-        const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.3 });
+        const markerMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0x000000, 
+            transparent: true, 
+            opacity: 0.8
+        });
 
         for (let i = -halfGrid; i < halfGrid; i++) {
             // Top edge
@@ -149,37 +134,6 @@ export class MazeState {
             this.scene.add(rightMarker);
             this.restrictedAreaMarkers.push(rightMarker);
         }
-    }
-
-    createAreaMarker(x, z, width, height, color, label) {
-        // Create ground marker
-        const geometry = new THREE.PlaneGeometry(width, height);
-        const material = new THREE.MeshBasicMaterial({
-            color: color,
-            transparent: true,
-            opacity: 0.3,
-            side: THREE.DoubleSide
-        });
-        
-        const marker = new THREE.Mesh(geometry, material);
-        marker.rotation.x = -Math.PI / 2;
-        marker.position.set(x, 0.01, z);
-        this.scene.add(marker);
-        this.restrictedAreaMarkers.push(marker);
-        
-        // Create text label
-        const labelDiv = document.createElement('div');
-        labelDiv.className = 'area-label';
-        labelDiv.textContent = label;
-        labelDiv.style.color = '#' + color.toString(16).padStart(6, '0');
-        labelDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-        labelDiv.style.padding = '2px 5px';
-        labelDiv.style.borderRadius = '3px';
-        
-        const labelObject = new CSS2DObject(labelDiv);
-        labelObject.position.set(x, 0.5, z);
-        this.scene.add(labelObject);
-        this.restrictedAreaMarkers.push(labelObject);
     }
 
     selectShape(shape) {

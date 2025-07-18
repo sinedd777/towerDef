@@ -167,8 +167,11 @@ scene.add(endLight);
 // Ground plane
 const groundGeometry = new THREE.PlaneGeometry(20, 20);
 // Use a seamless grass texture from the web (small size, CORS-enabled)
-const grassTexture = loadTexture('https://threejs.org/examples/textures/terrain/grasslight-big.jpg', 10, 10);
-const groundMaterial = new THREE.MeshLambertMaterial({ map: grassTexture });
+const snowTexture = loadTexture('/assets/textures/snow01.png', 10, 10);
+const groundMaterial = new THREE.MeshLambertMaterial({ 
+    map: snowTexture,
+    color: 0xffffff // Adding a white tint to enhance snow appearance
+});
 const ground = new THREE.Mesh(groundGeometry, groundMaterial);
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
@@ -201,10 +204,10 @@ function updatePathVisualization(waypoints) {
 
         const pathMaterial = new THREE.LineDashedMaterial({
             color: 0xff0000,
-            dashSize: 0.4,
-            gapSize: 0.4,
+            dashSize: 0.2,
+            gapSize: 0.8,
             transparent: true,
-            opacity: 0.8
+            opacity: 0.9
         });
 
         pathLine = new THREE.Line(pathGeometry, pathMaterial);
