@@ -4,6 +4,7 @@ import { MultiplayerScene } from '../multiplayer/MultiplayerScene.js';
 import { MultiplayerInputManager } from '../multiplayer/MultiplayerInputManager.js';
 import { LoadingScreen } from '../ui/LoadingScreen.js';
 import { SpectatorOverlay } from '../ui/SpectatorOverlay.js';
+import { TurnIndicatorUI } from '../ui/TurnIndicatorUI.js';
 import { GameState } from '../GameState.js';
 import { MazeState } from '../mazeBuilder/MazeState.js';
 import { MazeBuilderUI } from '../mazeBuilder/MazeBuilderUI.js';
@@ -47,6 +48,7 @@ export class MultiplayerGame {
         this.mazeBuilderUI = null;
         this.towerSelectionUI = null;
         this.towerManagementUI = null;
+        this.turnIndicatorUI = null;
         
         // Input managers
         this.mazeInputManager = null;
@@ -78,9 +80,7 @@ export class MultiplayerGame {
         this.onMatchmakingUpdate = statusCallbacks.onMatchmakingUpdate;
         this.onMatchmakingCancelled = statusCallbacks.onMatchmakingCancelled;
         this.onSessionJoined = statusCallbacks.onSessionJoined;
-        
-        console.log('Starting matchmaking process...');
-        
+            
         // Initialize network manager
         this.networkManager = new NetworkManager();
         
@@ -89,7 +89,6 @@ export class MultiplayerGame {
         
         // Setup connection handler to start matchmaking after connection
         this.networkManager.setOnConnected(() => {
-            console.log('Connected to multiplayer server');
             this.isConnected = true;
             // Start quick match once connected
             this.networkManager.startQuickMatch();
@@ -114,20 +113,66 @@ export class MultiplayerGame {
     setupNetworkHandlers() {
         // Matchmaking handlers
         this.networkManager.setOnMatchmakingUpdate((status) => {
-            console.log('Matchmaking status:', status);
             if (this.onMatchmakingUpdate) {
                 this.onMatchmakingUpdate(status);
             }
         });
         
         this.networkManager.setOnMatchFound((data) => {
-            console.log('Match found:', data);
             if (this.loadingScreen) {
                 this.loadingScreen.show();
             }
         });
 
-        // Add spectator update handler
+        // Cooperative mode handlers
+        this.networkManager.setOnTurnChanged((data) => {
+            
+            // Update turn indicator UI
+            if (this.turnIndicatorUI) {
+                this.turnIndicatorUI.updateTurn(data);
+                this.turnIndicatorUI.updateMyTurn(data.currentTurn === this.localPlayerId);
+            }
+            
+            // Update maze input manager turn state
+            if (this.mazeInputManager) {
+                this.mazeInputManager.updateTurnState(data.currentTurn, this.localPlayerId, data.gamePhase);
+            }
+            
+            // Update phase if changed
+            if (data.gamePhase) {
+                this.updateGamePhase(data.gamePhase);
+            }
+        });
+
+        this.networkManager.setOnDefenseStarted((data) => {
+            
+            // Show phase transition
+            if (this.turnIndicatorUI) {
+                this.turnIndicatorUI.showPhaseTransition('defense');
+            }
+            
+            this.transitionToDefensePhase();
+        });
+
+        this.networkManager.setOnGameMessage((data) => {
+            this.showGameMessage(data.message, data.type);
+        });
+
+        // Handle maze placement responses
+        this.networkManager.setOnMazePlaced((data) => {
+            this.handleMazePlacementSuccess(data);
+        });
+
+        this.networkManager.setOnMazePlaceFailed((data) => {
+            this.handleMazePlacementFailure(data);
+        });
+
+        // Handle other players' maze placements for synchronization
+        this.networkManager.setOnMazePiecePlaced((data) => {
+            this.handleOtherPlayerMazePlacement(data);
+        });
+
+        // Add spectator update handler (keep existing for compatibility)
         this.networkManager.setOnGameStateUpdate((data) => {
             if (this.spectatorOverlay && data.players) {
                 // Get opponent's data
@@ -156,7 +201,6 @@ export class MultiplayerGame {
 
         // Defense phase handlers
         this.networkManager.setOnDefensePhaseStarted((data) => {
-            console.log('Defense phase started:', data);
             
             // Hide maze builder UI
             if (this.mazeBuilderUI) {
@@ -176,7 +220,6 @@ export class MultiplayerGame {
 
         // Enemy spawn handler
         this.networkManager.setOnEnemySpawned((data) => {
-            console.log('Enemy spawned:', data);
             
             // Create enemy in scene
             if (data.enemy) {
@@ -191,11 +234,7 @@ export class MultiplayerGame {
 
         // Session handlers
         this.networkManager.setOnSessionJoined((data) => {
-            console.log('*** SESSION JOINED EVENT FIRED ***', Date.now());
-            console.log('Joined multiplayer session:', data);
-            
-            // Store local player ID
-            this.localPlayerId = data.playerId;
+            this.localPlayerId = data.player.playerId;
             this.isInSession = true;
             
             // Call external callback to hide game mode selector
@@ -208,16 +247,13 @@ export class MultiplayerGame {
         });
         
         this.networkManager.setOnPlayerJoined((data) => {
-            console.log('Another player joined:', data);
         });
         
         this.networkManager.setOnPlayerLeft((data) => {
-            console.log('Player left:', data);
         });
         
         // Connection handlers
         this.networkManager.setOnDisconnected((reason) => {
-            console.log('Disconnected from server:', reason);
             this.isConnected = false;
             this.isInSession = false;
             
@@ -238,7 +274,6 @@ export class MultiplayerGame {
         if (!this.isRunning) {
             this.isRunning = true;
             this.gameLoop();
-            console.log('Multiplayer game loop started');
         }
     }
 
@@ -251,7 +286,6 @@ export class MultiplayerGame {
             cancelAnimationFrame(this.animationId);
             this.animationId = null;
         }
-        console.log('Multiplayer game loop stopped');
     }
 
     /**
@@ -354,22 +388,18 @@ export class MultiplayerGame {
     async initializeMultiplayerSystems() {
         // Prevent double initialization with flag-based protection
         if (this.isInitializing) {
-            console.log('Initialization already in progress, skipping...');
             return;
         }
         
         if (this.multiplayerScene || this.mazeInputManager) {
-            console.log('Multiplayer systems already initialized, skipping...');
             return;
         }
         
         this.isInitializing = true; // Set flag to prevent concurrent initialization
-        console.log('Starting multiplayer systems initialization...');
         
         try {
             // Ensure any existing input manager is cleaned up first
             if (this.mazeInputManager) {
-                console.log('Cleaning up existing MazeInputManager before creating new one');
                 this.mazeInputManager.cleanup();
                 this.mazeInputManager = null;
             }
@@ -442,6 +472,10 @@ export class MultiplayerGame {
             this.towerSelectionUI = new TowerSelectionUI(this.gameState);
             this.towerManagementUI = new TowerManagementUI(this.gameState, this.labelRenderer, this.camera);
             
+            // Initialize cooperative mode UI
+            this.turnIndicatorUI = new TurnIndicatorUI();
+            this.turnIndicatorUI.show();
+            
             // Setup UI callbacks
             this.mazeBuilderUI.setOnStartDefenseCallback(() => {
                 this.startDefensePhase();
@@ -454,14 +488,15 @@ export class MultiplayerGame {
             this.spectatorOverlay = new SpectatorOverlay();
             this.spectatorOverlay.show();
             
-            // Initialize maze input manager for building phase
+            // Initialize maze input manager for building phase with network manager for turn-based control
             this.mazeInputManager = new MazeInputManager(
                 this.multiplayerScene.scene, 
                 this.camera, 
                 this.renderer, 
                 this.multiplayerScene.ground,
                 this.mazeState,
-                this.mazeBuilderUI
+                this.mazeBuilderUI,
+                this.networkManager // Pass network manager for cooperative mode
             );
 
             // Hide loading screen once everything is ready
@@ -471,8 +506,6 @@ export class MultiplayerGame {
             
             // Start the game loop after initialization
             this.start();
-            
-            console.log('Multiplayer game systems initialized successfully');
             
         } catch (error) {
             console.error('Failed to load assets:', error);
@@ -486,7 +519,6 @@ export class MultiplayerGame {
     }
 
     startDefensePhase() {
-        console.log('Starting defense phase...');
         
         // Calculate initial path
         const obstacles = this.getAllObstacles();
@@ -521,7 +553,6 @@ export class MultiplayerGame {
         // Update path visualization with the valid path
         this.updatePathVisualization(initialPath);
         
-        console.log('Defense phase started');
     }
 
     /**
@@ -616,13 +647,137 @@ export class MultiplayerGame {
     }
 
     /**
+     * Update game phase for cooperative mode
+     */
+    updateGamePhase(newPhase) {
+        if (this.turnIndicatorUI) {
+            this.turnIndicatorUI.updatePhase(newPhase);
+        }
+    }
+
+    /**
+     * Transition to defense phase
+     */
+    transitionToDefensePhase() {
+        // Hide maze builder UI
+        if (this.mazeBuilderUI) {
+            this.mazeBuilderUI.hide();
+        }
+        
+        // Show tower selection UI
+        if (this.towerSelectionUI) {
+            this.towerSelectionUI.show();
+        }
+        
+        // Cleanup maze input
+        if (this.mazeInputManager) {
+            this.mazeInputManager.cleanup();
+            this.mazeInputManager = null;
+        }
+        
+    }
+
+    /**
+     * Show game messages (turn notifications, errors, etc.)
+     */
+    showGameMessage(message, type = 'info') {
+        const messageElement = document.createElement('div');
+        messageElement.style.cssText = `
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: ${this.getMessageColor(type)};
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+            z-index: 2000;
+            pointer-events: none;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        `;
+        messageElement.textContent = message;
+        document.body.appendChild(messageElement);
+        
+        // Remove message after 3 seconds
+        setTimeout(() => {
+            if (messageElement.parentNode) {
+                messageElement.style.opacity = '0';
+                messageElement.style.transition = 'opacity 0.5s';
+                setTimeout(() => {
+                    if (messageElement.parentNode) {
+                        messageElement.parentNode.removeChild(messageElement);
+                    }
+                }, 500);
+            }
+        }, 3000);
+    }
+
+    /**
+     * Handle successful maze placement from server
+     */
+    handleMazePlacementSuccess(data) {
+        
+        // Apply the placement to local maze state
+        if (this.mazeState && data.mazePiece) {
+            // Create shape object from server data
+            const shapeData = {
+                name: data.mazePiece.shape,
+                cells: data.mazePiece.positions.map(pos => [pos.x - data.mazePiece.positions[0].x, pos.z - data.mazePiece.positions[0].z]),
+                color: data.color || 0xff0000
+            };
+            
+            // Apply the placement locally
+            this.mazeState.applyServerPlacement(data.mazePiece.positions, shapeData);
+            
+            // Update UI
+            if (this.mazeBuilderUI) {
+                this.mazeBuilderUI.onShapePlaced();
+            }
+        }
+    }
+
+    /**
+     * Handle failed maze placement from server
+     */
+    handleMazePlacementFailure(data) {
+        this.showGameMessage(`Placement failed: ${data.reason}`, 'error');
+        
+        // Flash the preview to indicate failure
+        if (this.mazeInputManager) {
+            this.mazeInputManager.flashInvalidPlacement();
+        }
+    }
+
+    /**
+     * Handle other players' maze placements for state synchronization
+     */
+    handleOtherPlayerMazePlacement(data) {
+            // Only apply if it's NOT our own placement (to avoid double-application)
+            if (data.playerId !== this.localPlayerId && this.mazeState && data.mazePiece) {
+                this.mazeState.applyServerPlacement(data.mazePiece.positions, data.shapeData);
+            }
+        }
+
+    /**
+     * Get color for different message types
+     */
+    getMessageColor(type) {
+        switch (type) {
+            case 'error': return 'rgba(244, 67, 54, 0.9)';
+            case 'warning': return 'rgba(255, 152, 0, 0.9)';
+            case 'success': return 'rgba(76, 175, 80, 0.9)';
+            case 'info':
+            default: return 'rgba(33, 150, 243, 0.9)';
+        }
+    }
+
+    /**
      * Cleanup all multiplayer resources
      */
     cleanup() {
         // Stop the game loop first
         this.stop();
-        
-        console.log('Cleaning up multiplayer game...');
         
         // Reset initialization flag
         this.isInitializing = false;
@@ -646,6 +801,10 @@ export class MultiplayerGame {
         if (this.towerManagementUI) {
             this.towerManagementUI.cleanup?.();
             this.towerManagementUI = null;
+        }
+        if (this.turnIndicatorUI) {
+            this.turnIndicatorUI.cleanup?.();
+            this.turnIndicatorUI = null;
         }
         
         if (this.spectatorOverlay) {
@@ -693,6 +852,5 @@ export class MultiplayerGame {
         this.isInSession = false;
         this.camera = null;
         
-        console.log('Multiplayer game cleaned up');
     }
 } 

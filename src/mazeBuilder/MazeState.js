@@ -143,9 +143,7 @@ export class MazeState {
     // Create a cohesive merged geometry for a shape
     createCohesiveShapeGeometry(shape, blockHeight = 0.5, blockSize = 1.0) {
         const geometries = [];
-        
-        console.log('Creating geometry for shape:', shape.name, 'with cells:', shape.cells);
-        
+                
         // Create individual block geometries that touch each other
         for (const cell of shape.cells) {
             // Use full-size blocks (1.0) so they touch and create seamless appearance
@@ -160,7 +158,6 @@ export class MazeState {
             
             // Position the geometry at relative cell positions (NOT world positions)
             blockGeometry.translate(cell[0], blockHeight / 2, cell[1]);
-            console.log('Translating block to:', cell[0], blockHeight / 2, cell[1]);
             geometries.push(blockGeometry);
         }
         
@@ -390,26 +387,20 @@ export class MazeState {
 
     placeShape(worldX, worldZ) {
         if (!this.selectedShape) {
-            console.log('No shape selected for placement');
             return false;
         }
         
         if (this.isPlacing) {
-            console.log('Already placing a shape, ignoring this placement');
             return false;
         }
         
         this.isPlacing = true; // Lock placement
-        console.log('Starting placement for shape:', this.selectedShape.name);
         
         // Snap to grid cell centers by adding 0.5
         const gridX = Math.floor(worldX) + 0.5;
         const gridZ = Math.floor(worldZ) + 0.5;
         
-        console.log('Attempting to place at grid position:', gridX, gridZ);
-        
         if (!this.selectedShape.canPlaceAt(gridX, gridZ, this.gridState, this.gridSize)) {
-            console.log('Cannot place shape at this position');
             this.isPlacing = false; // Unlock
             return false;
         }
@@ -417,8 +408,6 @@ export class MazeState {
         // Place the shape
         this.selectedShape.position = { x: gridX, z: gridZ };
         this.selectedShape.placeInGrid(this.gridState, this.gridSize);
-        
-        console.log('Shape placed in grid state');
         
         // Create visual blocks
         this.createVisualBlocks(this.selectedShape);
@@ -431,13 +420,11 @@ export class MazeState {
         const handIndex = this.currentShapeHand.indexOf(this.selectedShape);
         if (handIndex !== -1) {
             this.currentShapeHand.splice(handIndex, 1);
-            console.log('Removed shape from hand. New hand size:', this.currentShapeHand.length);
         }
 
         // Check if path is still valid
         const validPath = this.validatePath();
         if (!validPath) {
-            console.log('Path blocked, undoing placement');
             // Show alert
             alert('This placement blocks all paths to the end! Click OK to undo and try again.');
             // Undo the placement
@@ -450,18 +437,12 @@ export class MazeState {
         this.selectedShape = null;
         this.clearPreview();
         
-        console.log('Placement completed successfully');
         this.isPlacing = false; // Unlock
         
         return true;
     }
 
     createVisualBlocks(shape) {
-        console.log('Creating visual blocks for shape:', shape.name);
-        console.log('Shape position:', shape.position);
-        console.log('Shape cells:', shape.cells);
-        console.log('World cells:', shape.getWorldCells());
-        
         // Create a cohesive merged geometry for the placed shape
         const mergedGeometry = this.createCohesiveShapeGeometry(shape, 0.5, 1.0);
         
@@ -485,8 +466,6 @@ export class MazeState {
         
         // Store reference to the shape for easier management
         shapeMesh.userData.shape = shape;
-        
-        console.log('Mesh final position:', shapeMesh.position);
         
         this.scene.add(shapeMesh);
         this.gridBlocks.push(shapeMesh);
@@ -518,6 +497,62 @@ export class MazeState {
         
         // Optionally hide UI elements
         return this.getObstacles();
+    }
+
+    // Apply placement received from server (for multiplayer synchronization)
+    applyServerPlacement(positions, shapeData) {
+        // Server positions are already in correct world coordinates, use them directly
+        const worldPositions = positions.map(pos => ({ x: pos.x, z: pos.z }));
+        
+        // Create a shape object that matches what createVisualBlocks expects
+        const shapeObj = {
+            name: shapeData.name || shapeData.shape,
+            color: shapeData.color || 0xff0000,
+            position: worldPositions[0], // Use first position as the base position
+            cells: worldPositions.map(pos => [pos.x, pos.z])
+        };
+        
+        // Create visual blocks using the positions and color parameters
+        this.createVisualBlocksFromPositions(worldPositions, shapeObj.color);
+        
+        // Update grid state using world coordinates directly
+        worldPositions.forEach(pos => {
+            // Convert world coordinates to grid indices (0-based)
+            const gridX = Math.floor(pos.x + this.gridSize / 2);
+            const gridZ = Math.floor(pos.z + this.gridSize / 2);
+            
+            // Ensure coordinates are within grid bounds
+            if (gridX >= 0 && gridX < this.gridSize && gridZ >= 0 && gridZ < this.gridSize) {
+                if (!this.gridState[gridZ]) {
+                    this.gridState[gridZ] = {};
+                }
+                this.gridState[gridZ][gridX] = {
+                    occupied: true,
+                    shape: shapeObj.name,
+                    color: shapeObj.color
+                };
+            }
+        });
+    }
+
+    // Helper method to create visual blocks from positions array (for server synchronization)
+    createVisualBlocksFromPositions(positions, color) {
+        const geometries = [];
+        
+        for (const pos of positions) {
+            const blockGeometry = new THREE.BoxGeometry(0.9, 0.2, 0.9);
+            blockGeometry.translate(pos.x, 0.1, pos.z);
+            geometries.push(blockGeometry);
+        }
+        
+        if (geometries.length > 0) {
+            const mergedGeometry = BufferGeometryUtils.mergeGeometries(geometries);
+            const material = new THREE.MeshPhongMaterial({ color: color });
+            const blockMesh = new THREE.Mesh(mergedGeometry, material);
+            
+            this.scene.add(blockMesh);
+            this.gridBlocks.push(blockMesh);
+        }
     }
 
     // Clean up maze builder

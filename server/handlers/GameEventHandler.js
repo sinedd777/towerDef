@@ -32,9 +32,36 @@ class GameEventHandler {
             const result = this.processGameAction(socket, 'tower:place', data);
             if (result.success) {
                 socket.emit('tower:placed', result.data);
+                
+                // For cooperative mode, broadcast turn changes and resource updates
+                const sessionId = this.sessionHandler.playerSessions.get(socket.id);
+                const session = sessionId ? this.sessionHandler.sessions.get(sessionId) : null;
+                if (session && session.gameMode === 'cooperative') {
+                    const gameState = session.gameState.getPublicState();
+                    this.sessionHandler.io.to(session.sessionId).emit('game:state_update', {
+                        currentTurn: gameState.currentTurn,
+                        sharedResources: gameState.sharedResources,
+                        towers: gameState.towers
+                    });
+                }
+                
                 this.logger.debug(`Tower placed by ${socket.id}:`, result.data.tower);
             } else {
                 socket.emit('tower:place_failed', { reason: result.reason });
+                
+                // Send helpful error messages for turn-based failures
+                if (result.reason === 'not_your_turn') {
+                    socket.emit('game:message', { 
+                        type: 'info', 
+                        message: 'Please wait for your turn to place a tower.' 
+                    });
+                } else if (result.reason === 'insufficient_funds') {
+                    socket.emit('game:message', { 
+                        type: 'warning', 
+                        message: 'Not enough shared money for this tower.' 
+                    });
+                }
+                
                 this.logger.warn(`Tower placement failed for ${socket.id}: ${result.reason}`);
             }
         } catch (error) {
@@ -77,10 +104,53 @@ class GameEventHandler {
         try {
             const result = this.processGameAction(socket, 'maze:place', data);
             if (result.success) {
-                socket.emit('maze:placed', result.data);
-                this.logger.debug(`Maze piece placed by ${socket.id}:`, result.data);
+                socket.emit('maze:placed', result);
+                
+                // For cooperative mode, broadcast turn changes and phase transitions
+                const sessionId = this.sessionHandler.playerSessions.get(socket.id);
+                const session = sessionId ? this.sessionHandler.sessions.get(sessionId) : null;
+                if (session && session.gameMode === 'cooperative') {
+                    // Get player ID for this socket
+                    const playerId = socket.playerId;
+                    
+                    // Broadcast maze placement to ALL players in session
+                    this.sessionHandler.io.to(session.sessionId).emit('maze:piece_placed', {
+                        playerId: playerId,
+                        mazePiece: result.mazePiece,
+                        shapeData: data.shapeData,
+                        totalShapes: result.totalShapes,
+                        remainingShapes: result.remainingShapes
+                    });
+                    
+                    // Broadcast current turn and phase info to all players
+                    const gameState = session.gameState.getPublicState();
+                    this.sessionHandler.io.to(session.sessionId).emit('game:state_update', {
+                        currentTurn: gameState.currentTurn,
+                        gamePhase: gameState.gamePhase,
+                        shapesPlaced: gameState.shapesPlaced,
+                        sharedResources: gameState.sharedResources
+                    });
+                    
+                    // Check if defense phase started
+                    if (result.remainingShapes === 0) {
+                        this.sessionHandler.io.to(session.sessionId).emit('game:defense_started', {
+                            phase: 'defense',
+                            message: 'All shapes placed! Defense phase starting...'
+                        });
+                    }
+                }
+                
+                this.logger.debug(`Maze piece placed by ${socket.id}:`, result.mazePiece);
             } else {
                 socket.emit('maze:place_failed', { reason: result.reason });
+                
+                // Send helpful error messages for turn-based failures
+                if (result.reason === 'not_your_turn') {
+                    socket.emit('game:message', { 
+                        type: 'info', 
+                        message: 'Please wait for your turn to place a shape.' 
+                    });
+                }
             }
         } catch (error) {
             this.logger.error('Error handling maze placement:', error);
