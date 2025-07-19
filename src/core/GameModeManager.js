@@ -22,7 +22,6 @@ export class GameModeManager {
      * Initialize the game mode manager
      */
     initialize() {
-        console.log('Initializing GameModeManager...');
         
         // Initialize loading screen
         this.loadingScreen = new LoadingScreen();
@@ -36,7 +35,6 @@ export class GameModeManager {
         this.gameModeSelector.show();
         
         this.isInitialized = true;
-        console.log('GameModeManager initialized');
     }
 
     /**
@@ -44,9 +42,7 @@ export class GameModeManager {
      */
     setupGameModeSelector() {
         this.gameModeSelector.setOnModeSelected((selectedMode, options = {}) => {
-            this.currentGameMode = selectedMode;
-            console.log(`Starting game in ${this.currentGameMode} mode`, options);
-            
+            this.currentGameMode = selectedMode;            
             if (this.currentGameMode === 'multiplayer' && options.matchmaking) {
                 // Start multiplayer with matchmaking
                 this.startMultiplayerMode();
@@ -87,8 +83,6 @@ export class GameModeManager {
      * Start single player mode
      */
     async startSinglePlayerMode() {
-        console.log('Starting single player mode...');
-        
         try {
             // Cleanup any existing games
             this.cleanup();
@@ -97,8 +91,6 @@ export class GameModeManager {
             this.singlePlayerGame = new SinglePlayerGame();
             await this.singlePlayerGame.initialize(this.loadingScreen);
             this.singlePlayerGame.start();
-            
-            console.log('Single player game started successfully');
             
         } catch (error) {
             console.error('Failed to start single player game:', error);
@@ -112,8 +104,6 @@ export class GameModeManager {
      * Start multiplayer mode with matchmaking
      */
     async startMultiplayerMode() {
-        console.log('Starting multiplayer mode with matchmaking...');
-        
         try {
             // Cleanup any existing games
             this.cleanup();
@@ -129,25 +119,20 @@ export class GameModeManager {
             // Setup status callbacks
             const statusCallbacks = {
                 onMatchmakingUpdate: (status) => {
-                    console.log('Matchmaking status:', status);
                     this.gameModeSelector.updateMatchmakingStatus(status);
                 },
                 onMatchFound: (data) => {
-                    console.log('Match found:', data);
                     // Hide mode selector and show loading screen
                     this.gameModeSelector.hide();
                     this.loadingScreen.show();
                 },
                 onSessionJoined: () => {
-                    console.log('Session joined - hiding game mode selector');
                     this.gameModeSelector.hide();
                 }
             };
             
             // Initialize multiplayer with matchmaking
             await this.multiplayerGame.initializeWithMatchmaking(this.loadingScreen, statusCallbacks);
-            
-            console.log('Multiplayer matchmaking started successfully');
             
         } catch (error) {
             console.error('Failed to start matchmaking:', error);
@@ -159,9 +144,7 @@ export class GameModeManager {
     /**
      * Switch from multiplayer to single player (from error dialog)
      */
-    async switchToSinglePlayerFromMultiplayer() {
-        console.log('Switching from multiplayer to single player...');
-        
+    async switchToSinglePlayerFromMultiplayer() {        
         // Cleanup multiplayer
         this.cleanupMultiplayer();
         
@@ -225,7 +208,6 @@ export class GameModeManager {
      * Return to the main menu
      */
     returnToMenu() {
-        console.log('Returning to main menu...');
         this.cleanup();
         this.currentGameMode = null;
         
@@ -287,23 +269,17 @@ export class GameModeManager {
      * Cleanup all game instances
      */
     cleanup() {
-        console.log('Cleaning up GameModeManager...');
-        
         this.cleanupSinglePlayer();
         this.cleanupMultiplayer();
         
         // Note: We don't cleanup UI components (gameModeSelector, loadingScreen)
-        // as they may be reused when returning to menu
-        
-        console.log('GameModeManager cleanup complete');
+        // as they may be reused when returning to menu 
     }
 
     /**
      * Complete shutdown and cleanup
      */
     destroy() {
-        console.log('Destroying GameModeManager...');
-        
         this.cleanup();
         
         // Cleanup UI components

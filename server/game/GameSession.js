@@ -1,15 +1,21 @@
 import { v4 as uuidv4 } from 'uuid';
 import GameState from './GameState.js';
+import CooperativeGameState from './CooperativeGameState.js';
 import GameLogic from './GameLogic.js';
 import { Logger } from '../monitoring/Logger.js';
 
 class GameSession {
-    constructor(sessionId, maxPlayers = 2) {
+    constructor(sessionId, maxPlayers = 2, gameMode = 'cooperative') {
         this.sessionId = sessionId || uuidv4();
         this.maxPlayers = maxPlayers;
+        this.gameMode = gameMode; // 'competitive' or 'cooperative'
         this.players = new Map(); // socketId -> player data
-        this.spectators = new Set(); // socketIds of spectators
-        this.gameState = new GameState();
+        
+        // Use appropriate game state based on mode
+        this.gameState = gameMode === 'cooperative' ? 
+            new CooperativeGameState() : 
+            new GameState();
+            
         this.gameLogic = new GameLogic(this);
         this.logger = new Logger();
         
@@ -36,9 +42,8 @@ class GameSession {
     // Player Management
     addPlayer(socketId, playerData) {
         if (this.players.size >= this.maxPlayers) {
-            // Add as spectator if game is full
-            this.addSpectator(socketId);
-            return { success: false, reason: 'session_full', addedAsSpectator: true };
+            // Reject if game is full (no spectators)
+            return { success: false, reason: 'session_full' };
         }
         
         const playerId = `player${this.players.size + 1}`;
@@ -69,7 +74,6 @@ class GameSession {
     removePlayer(socketId) {
         const player = this.players.get(socketId);
         if (!player) {
-            this.spectators.delete(socketId);
             return;
         }
         
@@ -84,10 +88,7 @@ class GameSession {
         }
     }
     
-    addSpectator(socketId) {
-        this.spectators.add(socketId);
-        this.logger.info(`Spectator joined session ${this.sessionId}`);
-    }
+
     
     // Session State Management
     setPlayerReady(socketId, ready = true) {
@@ -101,6 +102,28 @@ class GameSession {
     checkReadyState() {
         if (this.status !== 'waiting') return;
         
+        // For cooperative games: auto-start when 2 players join (ignore ready status)
+        if (this.gameMode === 'cooperative' && this.players.size >= 2) {
+            console.log(`Auto-starting cooperative game with ${this.players.size} players`);
+            this.status = 'ready';
+            
+            setTimeout(() => {
+                try {
+                    this.startGame();
+                    this.logger.info(`Cooperative game auto-started: ${this.sessionId}`);
+                } catch (error) {
+                    this.logger.error('Failed to auto-start cooperative game:', error);
+                }
+            }, 1000); // Small delay to ensure everything is ready
+            
+            this.broadcastToSession('session:ready', {
+                sessionId: this.sessionId,
+                players: this.getPlayerList()
+            });
+            return;
+        }
+        
+        // For competitive games: require all players to be ready
         const allReady = this.players.size >= 2 && 
                         Array.from(this.players.values()).every(p => p.ready);
         
@@ -317,11 +340,7 @@ class GameSession {
             this.emit(player.socketId, event, data);
         }
         
-        // Broadcast to spectators
-        for (const spectatorId of this.spectators) {
-            if (excludeSocketId && spectatorId === excludeSocketId) continue;
-            this.emit(spectatorId, event, data);
-        }
+
     }
     
     emit(socketId, event, data) {
@@ -361,7 +380,6 @@ class GameSession {
             sessionId: this.sessionId,
             status: this.status,
             playerCount: this.players.size,
-            spectatorCount: this.spectators.size,
             maxPlayers: this.maxPlayers,
             createdAt: this.createdAt,
             startedAt: this.startedAt,
@@ -383,7 +401,6 @@ class GameSession {
     destroy() {
         this.stopGameLoop();
         this.players.clear();
-        this.spectators.clear();
         this.logger.info(`GameSession destroyed: ${this.sessionId}`);
     }
 }

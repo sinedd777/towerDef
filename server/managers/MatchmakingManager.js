@@ -25,7 +25,7 @@ class MatchmakingManager {
             preferences: {
                 maxPlayers: preferences.maxPlayers || 2,
                 skillLevel: preferences.skillLevel || 'beginner',
-                gameMode: preferences.gameMode || 'competitive',
+                gameMode: preferences.gameMode || 'cooperative',
                 region: preferences.region || 'global',
                 ...preferences
             },
@@ -177,7 +177,7 @@ class MatchmakingManager {
         console.log(`No available session found, adding player ${socketId} to matchmaking queue`);
         const matchResult = this.addToQueue(socketId, playerData, { 
             maxPlayers: 2, 
-            gameMode: 'competitive' 
+            gameMode: 'cooperative' 
         });
         
         if (matchResult.success) {
@@ -385,11 +385,30 @@ class MatchmakingManager {
             for (const player of match.players) {
                 const result = session.addPlayer(player.socketId, player.playerData);
                 if (result.success) {
-                    // Notify player about the match with both session ID and match data
+                    // Make sure player socket joins the session room
+                    const playerSocket = this.io.sockets.sockets.get(player.socketId);
+                    if (playerSocket) {
+                        playerSocket.join(match.sessionId);
+                    }
+                    
+                    // CRITICAL: Set playerSessions mapping (required for game actions)
+                    this.sessionHandler.playerSessions.set(player.socketId, match.sessionId);
+                    
+                    // Send matchmaking matched event
                     this.io.to(player.socketId).emit('matchmaking:matched', {
-                        sessionId: match.sessionId,  // Include at top level for backward compatibility
-                        match: match  // Include match object with session ID
+                        sessionId: match.sessionId,
+                        match: match
                     });
+                    
+                    // Send session joined event (critical for UI transition)
+                    this.io.to(player.socketId).emit('session:joined', {
+                        sessionId: match.sessionId,
+                        player: result.player,
+                        sessionInfo: session.getSessionInfo(),
+                        gameState: session.gameState.getPublicState()
+                    });
+                    
+                    this.logger.info(`Player ${result.player.playerId} joined session ${match.sessionId} via matchmaking`);
                 }
             }
         };

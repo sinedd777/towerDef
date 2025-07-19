@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 
 export class MazeInputManager {
-    constructor(scene, camera, renderer, ground, mazeState, mazeBuilderUI) {
-        console.log('MazeInputManager created at:', Date.now());
+    constructor(scene, camera, renderer, ground, mazeState, mazeBuilderUI, networkManager = null) {
         
         this.scene = scene;
         this.camera = camera;
@@ -10,9 +9,15 @@ export class MazeInputManager {
         this.ground = ground;
         this.mazeState = mazeState;
         this.mazeBuilderUI = mazeBuilderUI;
+        this.networkManager = networkManager; // For multiplayer turn validation
         
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
+        
+        // Turn-based state for cooperative multiplayer
+        this.isMyTurn = true; // Default to true for single player
+        this.currentTurn = null;
+        this.gamePhase = 'building';
         
         // Add debouncing for key presses and clicks
         this.lastKeyPress = 0;
@@ -26,7 +31,32 @@ export class MazeInputManager {
         this.boundKeyDown = this.onKeyDown.bind(this);
         
         this.setupEventListeners();
-        console.log('MazeInputManager setup complete');
+    }
+
+    // Turn management for cooperative multiplayer
+    updateTurnState(currentTurn, localPlayerId, gamePhase) {
+        this.currentTurn = currentTurn;
+        this.gamePhase = gamePhase;
+        this.isMyTurn = (currentTurn === localPlayerId) && (gamePhase === 'building');
+        
+        // Update UI visual state based on turn
+        this.updateUIForTurn();
+    }
+
+    updateUIForTurn() {
+        // Add visual indicators if not player's turn
+        const container = document.querySelector('#card-container');
+        if (container) {
+            if (this.isMyTurn) {
+                container.classList.remove('disabled-turn');
+                container.style.opacity = '1.0';
+                container.style.pointerEvents = 'auto';
+            } else {
+                container.classList.add('disabled-turn');
+                container.style.opacity = '0.6';
+                container.style.pointerEvents = 'none';
+            }
+        }
     }
 
     setupEventListeners() {
@@ -36,12 +66,10 @@ export class MazeInputManager {
     }
 
     cleanup() {
-        console.log('MazeInputManager cleanup called at:', Date.now());
         // Remove event listeners
         window.removeEventListener('mousemove', this.boundMouseMove);
         window.removeEventListener('click', this.boundClick);
         window.removeEventListener('keydown', this.boundKeyDown);
-        console.log('MazeInputManager event listeners removed');
         
         // Clear any preview shapes if they exist
         if (this.mazeState.shapePreview) {
@@ -53,23 +81,18 @@ export class MazeInputManager {
     onKeyDown(event) {
         const currentTime = Date.now();
         if (currentTime - this.lastKeyPress < this.keyDebounceTime) {
-            console.log('Key press ignored due to debouncing');
             return;
         }
         this.lastKeyPress = currentTime;
         
         if (event.key.toLowerCase() === 't') {
             // Select the first available shape from hand
-            console.log('T pressed! Current hand:', this.mazeState.currentShapeHand.map(s => s.name));
-            console.log('Currently selected shape:', this.mazeState.selectedShape?.name);
             if (this.mazeState.currentShapeHand.length > 0) {
                 const nextShape = this.mazeState.currentShapeHand[0];
-                console.log('Selecting shape:', nextShape.name, 'with cells:', nextShape.cells);
                 this.mazeState.selectShape(nextShape);
                 this.mazeBuilderUI.updateShapeSelection(nextShape);
             }
         } else if (event.key.toLowerCase() === 'r') {
-            console.log('R pressed for rotation. Current selected shape:', this.mazeState.selectedShape?.name);
             this.mazeState.rotateSelectedShape();
         }
     }
@@ -106,27 +129,27 @@ export class MazeInputManager {
         event.stopPropagation();
         
         const clickTime = Date.now();
-        console.log('Click event triggered at:', clickTime, 'Last click was:', this.lastClick, 'Diff:', clickTime - this.lastClick);
         
         // Add click debouncing
         if (clickTime - this.lastClick < this.clickDebounceTime) {
-            console.log('Click ignored due to debouncing (too soon after last click)');
             return;
         }
         this.lastClick = clickTime;
         
         // Skip if clicking on UI elements
         if (event.target.closest('#card-container')) {
-            console.log('Click on UI element, ignoring');
+            return;
+        }
+
+        // Check turn-based restrictions for multiplayer
+        if (this.networkManager && !this.isMyTurn) {
+            this.showTurnMessage();
             return;
         }
 
         if (!this.mazeState.selectedShape) {
-            console.log('No shape selected, ignoring click');
             return;
         }
-        
-        console.log('Processing click for shape:', this.mazeState.selectedShape.name, 'at time:', clickTime);
         
         this.raycaster.setFromCamera(this.mouse, this.camera);
         const intersects = this.raycaster.intersectObject(this.ground);
@@ -137,25 +160,26 @@ export class MazeInputManager {
             // Store shape name before placement (since it gets cleared)
             const shapeName = this.mazeState.selectedShape.name;
             
-            console.log('Attempting to place', shapeName, 'at', point.x, point.z, 'at time:', clickTime);
-            
-            // Try to place the shape
-            if (this.mazeState.placeShape(point.x, point.z)) {
-                // Shape placed successfully
-                console.log('Shape placed successfully, calling UI update');
-                this.mazeBuilderUI.onShapePlaced();
-                console.log(`Placed ${shapeName} at (${Math.round(point.x)}, ${Math.round(point.z)})`);
-                
-                // Important: Update the click debounce time after successful placement
+            // For multiplayer, send placement to server; for single player, place locally
+            if (this.networkManager) {
+                // Multiplayer mode: send to server for validation and synchronization
+                this.sendShapePlacementToServer(shapeName, point.x, point.z);
+                // Important: Update the click debounce time after sending
                 this.lastClick = Date.now();
-                console.log('Updated lastClick to:', this.lastClick);
             } else {
-                // Invalid placement
-                console.log('Cannot place shape here!');
-                this.flashInvalidPlacement();
+                // Single player mode: place locally
+                if (this.mazeState.placeShape(point.x, point.z)) {
+                    // Shape placed successfully
+                    this.mazeBuilderUI.onShapePlaced();
+                    
+                    // Important: Update the click debounce time after successful placement
+                    this.lastClick = Date.now();
+                    } else {
+                    // Invalid placement
+                    this.flashInvalidPlacement();
+                }
             }
         } else {
-            console.log('No intersection with ground found');
         }
     }
 
@@ -176,5 +200,56 @@ export class MazeInputManager {
                 }
             }, 200);
         }
+    }
+
+    sendShapePlacementToServer(shapeName, x, z) {
+        if (!this.networkManager || !this.mazeState.selectedShape) {
+            console.error('Cannot send shape placement: missing network manager or selected shape');
+            return;
+        }
+
+        // Prepare shape data to send to server
+        const shapeData = {
+            shape: shapeName,
+            positions: this.mazeState.selectedShape.cells.map(cell => ({
+                x: Math.round(x) + cell[0],
+                z: Math.round(z) + cell[1]
+            })),
+            color: this.mazeState.selectedShape.color,
+            gridX: Math.round(x),
+            gridZ: Math.round(z)
+        };
+
+        console.log('Sending maze placement to server:', shapeData);
+        
+        // Send to server via network manager
+        this.networkManager.placeMaze(shapeData.gridX, shapeData.gridZ, shapeData);
+    }
+
+    showTurnMessage() {
+        // Show a brief message indicating it's not the player's turn
+        const message = document.createElement('div');
+        message.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 193, 7, 0.9);
+            color: #000;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+            z-index: 2000;
+            pointer-events: none;
+        `;
+        message.textContent = `Wait for your turn! It's ${this.currentTurn}'s turn.`;
+        document.body.appendChild(message);
+        
+        // Remove message after 2 seconds
+        setTimeout(() => {
+            if (message.parentNode) {
+                message.parentNode.removeChild(message);
+            }
+        }, 2000);
     }
 } 

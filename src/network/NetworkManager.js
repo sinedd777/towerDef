@@ -23,6 +23,13 @@ export class NetworkManager {
         this.onMatchmakingUpdate = null;
         this.onMatchFound = null;
         
+        // Cooperative mode callbacks
+        this.onTurnChanged = null;
+        this.onDefenseStarted = null;
+        this.onGameMessage = null;
+        this.onMazePlaced = null;
+        this.onMazePlaceFailed = null;
+        
         // Connection monitoring
         this.pingInterval = null;
         this.lastPingTime = 0;
@@ -249,12 +256,13 @@ export class NetworkManager {
                 });
             }
             
-            // Extract sessionId and automatically join the session
+            // Store sessionId for reference (server already added us to session)
             const sessionId = data.sessionId;
             
             if (sessionId) {
-                console.log('Joining matched session:', sessionId);
-                this.joinSession(sessionId); // Server already knows our name
+                console.log('Matched to session:', sessionId, '(already joined by server)');
+                // Don't call joinSession() - server already added us during matchmaking
+                this.sessionId = sessionId;
             } else {
                 console.error('No session ID provided in match data:', data);
                 if (this.onError) {
@@ -281,6 +289,29 @@ export class NetworkManager {
                 this.onMatchmakingUpdate({
                     status: 'cancelled'
                 });
+            }
+        });
+
+        // Maze placement events for cooperative mode
+        this.socket.on('maze:placed', (data) => {
+            console.log('Maze placed event:', data);
+            if (this.onMazePlaced) {
+                this.onMazePlaced(data);
+            }
+        });
+
+        this.socket.on('maze:place_failed', (data) => {
+            console.log('Maze place failed event:', data);
+            if (this.onMazePlaceFailed) {
+                this.onMazePlaceFailed(data);
+            }
+        });
+
+        // Cooperative mode: Other players' maze placements
+        this.socket.on('maze:piece_placed', (data) => {
+            console.log('Maze piece placed by another player:', data);
+            if (this.onMazePiecePlaced) {
+                this.onMazePiecePlaced(data);
             }
         });
     }
@@ -416,6 +447,64 @@ export class NetworkManager {
             console.log('Enemy spawned:', data);
             if (callback) callback(data);
         });
+    }
+
+    // Cooperative mode event handlers
+    setOnTurnChanged(callback) {
+        this.onTurnChanged = callback;
+        if (!this.socket) return;
+
+        this.socket.on('game:state_update', (data) => {
+            console.log('Cooperative game state update:', data);
+            if (this.onTurnChanged && data.currentTurn) {
+                this.onTurnChanged({
+                    currentTurn: data.currentTurn,
+                    gamePhase: data.gamePhase,
+                    shapesPlaced: data.shapesPlaced,
+                    sharedResources: data.sharedResources
+                });
+            }
+            // Also trigger general game state update
+            if (this.onGameStateUpdate) {
+                this.onGameStateUpdate(data);
+            }
+        });
+    }
+
+    setOnDefenseStarted(callback) {
+        this.onDefenseStarted = callback;
+        if (!this.socket) return;
+
+        this.socket.on('game:defense_started', (data) => {
+            console.log('Cooperative defense started:', data);
+            if (this.onDefenseStarted) {
+                this.onDefenseStarted(data);
+            }
+        });
+    }
+
+    setOnGameMessage(callback) {
+        this.onGameMessage = callback;
+        if (!this.socket) return;
+
+        this.socket.on('game:message', (data) => {
+            console.log('Game message:', data);
+            if (this.onGameMessage) {
+                this.onGameMessage(data);
+            }
+        });
+    }
+
+    setOnMazePlaced(callback) {
+        this.onMazePlaced = callback;
+    }
+
+    setOnMazePlaceFailed(callback) {
+        this.onMazePlaceFailed = callback;
+    }
+
+    setOnMazePiecePlaced(callback) {
+        this.onMazePiecePlaced = callback;
     }
     
     // Matchmaking methods

@@ -172,7 +172,10 @@ class GameLogic {
     
     // Maze Actions
     handleMazePlace(playerId, data) {
-        const validation = this.validateMazePlaceData(data);
+        // Extract shapeData from the nested structure sent by client
+        const mazeData = data.shapeData || data; // Support both formats for backward compatibility
+        
+        const validation = this.validateMazePlaceData(mazeData);
         if (!validation.success) return validation;
         
         // Check game phase
@@ -180,8 +183,8 @@ class GameLogic {
             return { success: false, reason: 'wrong_phase' };
         }
         
-        // Delegate to game state
-        const result = this.gameState.placeMazePiece(playerId, data);
+        // Delegate to game state with the extracted maze data
+        const result = this.gameState.placeMazePiece(playerId, mazeData);
         
         return result;
     }
