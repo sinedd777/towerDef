@@ -12,6 +12,157 @@ class GameLogic {
         };
         
         this.playerActionHistory = new Map(); // playerId -> action history
+        
+        // Initialize pathfinding system
+        this.initializePathfinding();
+    }
+    
+    async initializePathfinding() {
+        try {
+            // Import pathfinding on demand to avoid circular dependencies
+            const module = await import('../utils/Pathfinding.js');
+            const ServerPathfinding = module.default;
+            this.pathfinding = new ServerPathfinding(20);
+            console.log('Server-side pathfinding initialized successfully');
+            
+            // Run pathfinding tests in development
+            if (process.env.NODE_ENV !== 'production') {
+                try {
+                    const testModule = await import('../utils/PathfindingTest.js');
+                    testModule.testServerPathfinding();
+                    testModule.testCooperativePathfinding();
+                } catch (testError) {
+                    console.warn('Pathfinding tests failed:', testError);
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load pathfinding module:', error);
+            // Don't throw error, just log and continue without pathfinding
+        }
+    }
+    
+    // Calculate path for a specific player using current obstacles
+    calculatePath(playerId) {
+        if (!this.pathfinding) {
+            console.warn('Pathfinding not initialized, falling back to simple path');
+            return this.gameState.generateEnemyPath(playerId);
+        }
+        
+        try {
+            // Get obstacles for this player
+            const obstacles = this.getAllObstacles(playerId);
+            
+            // Get start and end positions based on game mode
+            const { startPos, endPos } = this.getPathEndpoints(playerId);
+            
+            // Calculate path using A* algorithm
+            const path = this.pathfinding.findPath(startPos, endPos, obstacles);
+            
+            if (path) {
+                console.log(`Calculated path for ${playerId}: ${path.length} waypoints`);
+                return path;
+            } else {
+                console.warn(`No valid path found for ${playerId}, using fallback`);
+                // Fallback to simple path if A* fails
+                return this.gameState.generateEnemyPath(playerId);
+            }
+        } catch (error) {
+            console.error('Error calculating path:', error);
+            return this.gameState.generateEnemyPath(playerId);
+        }
+    }
+    
+    // Get all obstacles for a specific player
+    getAllObstacles(playerId) {
+        const obstacles = [];
+        
+        // Add maze obstacles
+        const mazeObstacles = this.gameState.getMazeObstacles(playerId);
+        obstacles.push(...mazeObstacles);
+        
+        // Add tower obstacles
+        const towerObstacles = this.gameState.getTowerObstacles(playerId);
+        obstacles.push(...towerObstacles);
+        
+        return obstacles;
+    }
+    
+    // Get start and end positions based on game mode and player
+    getPathEndpoints(playerId) {
+        // Check if cooperative mode
+        if (this.gameState.gameMode === 'cooperative' || this.gameState.sharedResources) {
+            // Cooperative mode: use shared spawn points and exit
+            const spawnPoints = this.gameState.spawnPoints || [
+                { x: -8, z: -8 },  // Northwest
+                { x: -8, z: 8 }    // Southwest
+            ];
+            const exitPoint = this.gameState.exitPoint || { x: 8, z: 0 };
+            
+            // For cooperative, we can return multiple possible paths
+            // For now, return path from first spawn point
+            return {
+                startPos: spawnPoints[0],
+                endPos: exitPoint
+            };
+        } else {
+            // Competitive mode: each player has their own map area
+            const mapPos = this.gameState.getPlayerMapPosition(playerId);
+            return {
+                startPos: { x: mapPos.x - 10, z: mapPos.z - 10 },
+                endPos: { x: mapPos.x + 10, z: mapPos.z + 10 }
+            };
+        }
+    }
+    
+    // Validate tower placement doesn't block all paths
+    validateTowerPlacement(playerId, position) {
+        if (!this.pathfinding) {
+            return true; // Allow if pathfinding not available
+        }
+        
+        try {
+            // Get current obstacles plus the proposed tower
+            const obstacles = this.getAllObstacles(playerId);
+            obstacles.push({ x: position.x, z: position.z });
+            
+            // Get path endpoints
+            const { startPos, endPos } = this.getPathEndpoints(playerId);
+            
+            // Check if path still exists
+            const path = this.pathfinding.findPath(startPos, endPos, obstacles);
+            
+            return path !== null;
+        } catch (error) {
+            console.error('Error validating tower placement:', error);
+            return true; // Default to allowing placement on error
+        }
+    }
+    
+    // Recalculate paths when obstacles change
+    recalculatePlayerPaths() {
+        const pathUpdates = {};
+        
+        // Get all players
+        const players = this.gameState.players || new Map();
+        
+        for (const [playerId, playerData] of players) {
+            const newPath = this.calculatePath(playerId);
+            if (newPath) {
+                // Store the new path
+                this.gameState.setPlayerPath(playerId, newPath);
+                pathUpdates[playerId] = newPath;
+            }
+        }
+        
+        // Broadcast path updates to clients
+        if (Object.keys(pathUpdates).length > 0) {
+            this.gameSession.broadcastToSession('game:paths_updated', {
+                paths: pathUpdates,
+                timestamp: Date.now()
+            });
+        }
+        
+        return pathUpdates;
     }
     
     update(deltaTime) {
@@ -66,6 +217,15 @@ class GameLogic {
             return { success: false, reason: 'wrong_phase' };
         }
         
+        // Validate tower placement doesn't block all paths
+        if (!this.validateTowerPlacement(playerId, data.position)) {
+            return { 
+                success: false, 
+                reason: 'blocks_path',
+                message: 'Tower placement would block the enemy path'
+            };
+        }
+        
         // Get tower cost and validate
         const towerCost = this.getTowerCost(data.type);
         const towerData = {
@@ -78,6 +238,9 @@ class GameLogic {
         const result = this.gameState.placeTower(playerId, towerData);
         
         if (result.success) {
+            // Recalculate paths after tower placement
+            this.recalculatePlayerPaths();
+            
             return {
                 success: true,
                 data: {
@@ -185,6 +348,17 @@ class GameLogic {
         
         // Delegate to game state with the extracted maze data
         const result = this.gameState.placeMazePiece(playerId, mazeData);
+        
+        if (result.success) {
+            // Recalculate paths after maze placement for live feedback
+            // This helps players see if their maze blocks the path
+            try {
+                this.recalculatePlayerPaths();
+            } catch (error) {
+                console.warn('Failed to recalculate paths after maze placement:', error);
+                // Don't fail the maze placement if path calculation fails
+            }
+        }
         
         return result;
     }

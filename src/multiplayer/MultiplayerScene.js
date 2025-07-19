@@ -105,9 +105,22 @@ export class MultiplayerScene {
         };
     }
     
-    // Get spawn position (like single player)
+    // Get spawn positions for cooperative mode (multiple spawn points)
+    getSpawnPositions() {
+        return [
+            new THREE.Vector3(-8, 0.1, -8),  // Northwest
+            new THREE.Vector3(-8, 0.1, 8)    // Southwest
+        ];
+    }
+    
+    // Get exit position for cooperative mode
+    getExitPosition() {
+        return new THREE.Vector3(8, 0.1, 0);  // East center
+    }
+    
+    // Legacy method for backward compatibility
     getSpawnPosition(playerId = null) {
-        return new THREE.Vector3(-8, 0.1, -8); // Standard spawn position
+        return this.getSpawnPositions()[0]; // Return first spawn point
     }
     
     getEndPosition(playerId = null) {

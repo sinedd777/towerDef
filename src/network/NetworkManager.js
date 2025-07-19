@@ -476,6 +476,17 @@ export class NetworkManager {
     setOnMazePiecePlaced(callback) {
         this.onMazePiecePlaced = callback;
     }
+
+    setOnPathsUpdated(callback) {
+        this.onPathsUpdated = callback;
+        if (!this.socket) return;
+
+        this.socket.on('game:paths_updated', (data) => {
+            if (this.onPathsUpdated) {
+                this.onPathsUpdated(data);
+            }
+        });
+    }
     
     // Matchmaking methods
     startQuickMatch() {

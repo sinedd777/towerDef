@@ -323,6 +323,22 @@ class CooperativeGameState {
         
         const spawnPoint = viableSpawns[Math.floor(Math.random() * viableSpawns.length)];
         
+        // Use calculated path if available, otherwise fall back to simple path
+        let enemyPath = this.primaryPath;
+        if (!enemyPath) {
+            enemyPath = this.generateEnemyPath(spawnPoint);
+        }
+        
+        // If we have a calculated path but it doesn't start from this spawn point,
+        // create a path from this spawn point to the calculated path
+        if (enemyPath && enemyPath.length > 0) {
+            const pathStart = enemyPath[0];
+            if (Math.abs(pathStart.x - spawnPoint.x) > 0.5 || Math.abs(pathStart.z - spawnPoint.z) > 0.5) {
+                // Need to connect spawn point to the main path
+                enemyPath = [spawnPoint, ...enemyPath];
+            }
+        }
+        
         const enemy = {
             id: enemyId,
             type: this.getEnemyTypeForWave(this.sharedResources.wave),
@@ -330,7 +346,7 @@ class CooperativeGameState {
             maxHealth: this.getEnemyHealth(this.sharedResources.wave),
             speed: this.getEnemySpeed(this.sharedResources.wave),
             position: { x: spawnPoint.x, y: 0, z: spawnPoint.z },
-            path: this.generateEnemyPath(spawnPoint),
+            path: enemyPath,
             pathProgress: 0,
             reward: this.getEnemyReward(this.sharedResources.wave),
             createdAt: this.gameTime
@@ -348,10 +364,67 @@ class CooperativeGameState {
     }
     
     generateEnemyPath(spawnPoint) {
-        // Simple path from spawn to exit - should be enhanced with pathfinding
+        // Simple fallback path from spawn to exit - will be replaced by A* pathfinding
         return [
             { x: spawnPoint.x, z: spawnPoint.z },
             { x: this.exitPoint.x, z: this.exitPoint.z }
+        ];
+    }
+    
+    // Get maze obstacles for pathfinding (all maze pieces on shared board)
+    getMazeObstacles(playerId = null) {
+        const obstacles = [];
+        
+        for (const [posKey, mazePiece] of this.maze) {
+            // Parse position key (format: "x,z")
+            const [x, z] = posKey.split(',').map(v => parseFloat(v));
+            obstacles.push({ x, z });
+        }
+        
+        return obstacles;
+    }
+    
+    // Get tower obstacles for pathfinding (all towers on shared board)
+    getTowerObstacles(playerId = null) {
+        const obstacles = [];
+        
+        for (const [towerId, tower] of this.towers) {
+            obstacles.push({ 
+                x: tower.position.x, 
+                z: tower.position.z 
+            });
+        }
+        
+        return obstacles;
+    }
+    
+    // Set/get shared paths for cooperative mode
+    setPlayerPath(playerId, path) {
+        if (!this.sharedPaths) {
+            this.sharedPaths = new Map();
+        }
+        this.sharedPaths.set(playerId, path);
+        
+        // In cooperative mode, we also store a primary shared path
+        if (!this.primaryPath) {
+            this.primaryPath = path;
+        }
+    }
+    
+    getPlayerPath(playerId) {
+        if (!this.sharedPaths) {
+            return this.primaryPath || null;
+        }
+        return this.sharedPaths.get(playerId) || this.primaryPath;
+    }
+    
+    // Get all viable spawn points for cooperative mode
+    getViableSpawnPoints() {
+        // Return all configured spawn points
+        // Could be enhanced to check if paths exist from each spawn point
+        return this.spawnPoints || [
+            { x: -8, z: -8 },  // Northwest
+            { x: -8, z: 8 }    // Southwest
         ];
     }
     

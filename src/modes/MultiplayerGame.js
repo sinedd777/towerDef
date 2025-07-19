@@ -15,6 +15,7 @@ import { assetManager } from '../managers/AssetManager.js';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { Enemy } from '../Enemy.js';
 import { Pathfinding } from '../Pathfinding.js';
+import { EnvironmentManager } from '../managers/EnvironmentManager.js';
 
 export class MultiplayerGame {
     constructor() {
@@ -30,19 +31,28 @@ export class MultiplayerGame {
         this.gameState = null;
         this.mazeState = null;
         this.pathfinding = null;  // Add pathfinding
+        this.environmentManager = null;  // Add environment manager
         
         // Game objects
         this.enemies = new Map();
         this.towers = new Map();
         
-        // Game constants
-        this.enemyStartPosition = new THREE.Vector3(-8, 0.1, -8);
-        this.enemyEndPosition = new THREE.Vector3(8, 0.1, 8);
+        // Game constants - updated for cooperative mode
+        this.spawnPoints = [
+            new THREE.Vector3(-8, 0.1, -8),  // Northwest
+            new THREE.Vector3(-8, 0.1, 8)    // Southwest
+        ];
+        this.exitPoint = new THREE.Vector3(8, 0.1, 0);  // East center
+        
+        // Legacy single spawn (for backward compatibility)
+        this.enemyStartPosition = this.spawnPoints[0];
+        this.enemyEndPosition = this.exitPoint;
         this.lastEnemySpawn = 0;
         this.enemySpawnInterval = 2000;
         
-        // Path visualization
-        this.pathLine = null;
+        // Path visualization (support multiple paths for cooperative mode)
+        this.pathLines = [];  // Array to hold multiple path lines
+        this.pathLine = null; // Legacy single path line for backward compatibility
         
         // UI systems (like single player)
         this.mazeBuilderUI = null;
@@ -212,9 +222,31 @@ export class MultiplayerGame {
                 this.towerSelectionUI.show();
             }
             
-            // Update path visualization
-            if (data.path) {
-                this.multiplayerScene.updatePathVisualization(data.path);
+            // Update path visualization based on game mode
+            if (data.gameMode === 'cooperative' && data.sharedPath) {
+                // Cooperative mode: calculate multiple paths from all spawn points
+                this.updateMultiplePathsFromServer(data.sharedPath);
+            } else if (data.gameMode === 'competitive' && data.paths && data.paths[this.localPlayerId]) {
+                // Competitive mode: use player-specific path
+                this.updatePathVisualization(data.paths[this.localPlayerId]);
+            } else if (data.path) {
+                // Backward compatibility: use legacy path format
+                this.updatePathVisualization(data.path);
+            }
+        });
+        
+        // Handle path updates from server (when obstacles change)
+        this.networkManager.setOnPathsUpdated((data) => {
+            
+            if (data.paths && data.paths[this.localPlayerId]) {
+                // Check if this is cooperative mode to show multiple paths
+                if (data.gameMode === 'cooperative' || this.spawnPoints.length > 1) {
+                    this.updateMultiplePathsFromServer(data.paths[this.localPlayerId]);
+                } else {
+                    // Competitive mode: use player-specific path
+                    this.updatePathVisualization(data.paths[this.localPlayerId]);
+                }
+                console.log('Paths updated due to obstacle changes');
             }
         });
 
@@ -304,20 +336,36 @@ export class MultiplayerGame {
 
         const currentTime = Date.now();
 
-        // Animate path line
-        if (this.pathLine) {
+        // Animate all path lines
+        for (const pathLine of this.pathLines) {
+            if (pathLine && pathLine.material) {
+                pathLine.material.dashOffset -= 0.02;
+            }
+        }
+        
+        // Legacy path line animation for backward compatibility
+        if (this.pathLine && this.pathLine.material) {
             this.pathLine.material.dashOffset -= 0.02;
         }
 
-        // Display path continuously during maze building
+        // Display paths continuously during maze building (from all spawn points)
         if (this.gameState.isMazeBuilding()) {
             const obstacles = this.getAllObstacles();
-            const currentPath = this.pathfinding.findPath(
-                { x: this.enemyStartPosition.x, z: this.enemyStartPosition.z },
-                { x: this.enemyEndPosition.x, z: this.enemyEndPosition.z },
-                obstacles
-            );
-            this.updatePathVisualization(currentPath);
+            
+            // Calculate paths from all spawn points to exit for cooperative mode
+            const allPaths = [];
+            for (const spawnPoint of this.spawnPoints) {
+                const path = this.pathfinding.findPath(
+                    { x: spawnPoint.x, z: spawnPoint.z },
+                    { x: this.exitPoint.x, z: this.exitPoint.z },
+                    obstacles
+                );
+                if (path) {
+                    allPaths.push(path);
+                }
+            }
+            
+            this.updateMultiplePathVisualization(allPaths);
         }
 
         // Update enemies
@@ -358,33 +406,87 @@ export class MultiplayerGame {
     }
 
     updatePathVisualization(waypoints) {
-        // Remove existing path line
-        if (this.pathLine) {
-            this.multiplayerScene.scene.remove(this.pathLine);
-            this.pathLine.geometry.dispose();
-            this.pathLine.material.dispose();
-            this.pathLine = null;
+        // Legacy method for single path - now delegates to multiple path visualization
+        this.updateMultiplePathVisualization(waypoints ? [waypoints] : []);
+    }
+
+    updateMultiplePathVisualization(pathsArray) {
+        // Remove all existing path lines
+        this.clearAllPathLines();
+
+        // Create new path lines for each path
+        if (pathsArray && pathsArray.length > 0) {
+            const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xff00ff]; // Red, Green, Blue, Magenta
+            
+            for (let i = 0; i < pathsArray.length; i++) {
+                const waypoints = pathsArray[i];
+                if (waypoints && waypoints.length > 0) {
+                    const positions = waypoints.map(waypoint => {
+                        return waypoint.position ? waypoint.position.clone() : waypoint.clone();
+                    });
+
+                    const pathGeometry = new THREE.BufferGeometry().setFromPoints(positions);
+
+                    const pathMaterial = new THREE.LineDashedMaterial({
+                        color: colors[i % colors.length], // Cycle through colors
+                        dashSize: 0.2,
+                        gapSize: 0.8,
+                        transparent: true,
+                        opacity: 0.8,
+                        linewidth: 2
+                    });
+
+                    const pathLine = new THREE.Line(pathGeometry, pathMaterial);
+                    pathLine.computeLineDistances();
+                    this.multiplayerScene.scene.add(pathLine);
+                    this.pathLines.push(pathLine);
+                    
+                    // Keep first path as legacy pathLine for compatibility
+                    if (i === 0) {
+                        this.pathLine = pathLine;
+                    }
+                }
+            }
+            
+            console.log(`Visualizing ${this.pathLines.length} paths in cooperative mode`);
         }
+    }
 
-        // Only create new path line if waypoints exist
-        if (waypoints && waypoints.length > 0) {
-            const positions = waypoints.map(waypoint => {
-                return waypoint.position ? waypoint.position.clone() : waypoint.clone();
-            });
+    clearAllPathLines() {
+        // Remove all path lines
+        for (const pathLine of this.pathLines) {
+            this.multiplayerScene.scene.remove(pathLine);
+            pathLine.geometry.dispose();
+            pathLine.material.dispose();
+        }
+        this.pathLines = [];
+        this.pathLine = null;
+    }
 
-            const pathGeometry = new THREE.BufferGeometry().setFromPoints(positions);
-
-            const pathMaterial = new THREE.LineDashedMaterial({
-                color: 0xff0000,
-                dashSize: 0.2,
-                gapSize: 0.8,
-                transparent: true,
-                opacity: 0.9
-            });
-
-            this.pathLine = new THREE.Line(pathGeometry, pathMaterial);
-            this.pathLine.computeLineDistances();
-            this.multiplayerScene.scene.add(this.pathLine);
+    updateMultiplePathsFromServer(sharedPath) {
+        // Server provides one path, but we need to calculate paths from all spawn points
+        // to show the complete cooperative gameplay picture
+        const obstacles = this.getAllObstacles();
+        const allPaths = [];
+        
+        for (const spawnPoint of this.spawnPoints) {
+            const path = this.pathfinding.findPath(
+                { x: spawnPoint.x, z: spawnPoint.z },
+                { x: this.exitPoint.x, z: this.exitPoint.z },
+                obstacles
+            );
+            
+            if (path) {
+                allPaths.push(path);
+            }
+        }
+        
+        // If we couldn't calculate any local paths, fall back to server path
+        if (allPaths.length === 0 && sharedPath) {
+            console.warn('Could not calculate local paths, using server path');
+            this.updatePathVisualization(sharedPath);
+        } else {
+            this.updateMultiplePathVisualization(allPaths);
         }
     }
 
@@ -472,6 +574,7 @@ export class MultiplayerGame {
             this.gameState = new GameState();
             this.mazeState = new MazeState(this.multiplayerScene.scene, 20);
             this.pathfinding = new Pathfinding(20);  // Initialize pathfinding
+            this.environmentManager = new EnvironmentManager(this.multiplayerScene.scene, 20);  // Initialize environment
             
             // Initialize UI systems (like single player)
             this.mazeBuilderUI = new MazeBuilderUI(this.mazeState, this.gameState);
@@ -526,20 +629,34 @@ export class MultiplayerGame {
 
     startDefensePhase() {
         
-        // Calculate initial path
+        // Calculate paths from all spawn points to exit
         const obstacles = this.getAllObstacles();
-        const initialPath = this.pathfinding.findPath(
-            { x: this.enemyStartPosition.x, z: this.enemyStartPosition.z },
-            { x: this.enemyEndPosition.x, z: this.enemyEndPosition.z },
-            obstacles
-        );
+        const allPaths = [];
+        let hasValidPath = false;
+        
+        for (const spawnPoint of this.spawnPoints) {
+            const path = this.pathfinding.findPath(
+                { x: spawnPoint.x, z: spawnPoint.z },
+                { x: this.exitPoint.x, z: this.exitPoint.z },
+                obstacles
+            );
+            
+            if (path) {
+                allPaths.push(path);
+                hasValidPath = true;
+            } else {
+                console.warn(`No path found from spawn point (${spawnPoint.x}, ${spawnPoint.z}) to exit`);
+            }
+        }
 
-        // Check if there's a valid path before starting defense phase
-        if (!initialPath) {
-            console.error('No valid path exists from start to end! Cannot start defense phase.');
-            alert('Cannot start defense phase: No valid path exists from start to end. Please ensure there is a path through your maze.');
+        // Check if there's at least one valid path before starting defense phase
+        if (!hasValidPath) {
+            console.error('No valid paths exist from any spawn points to exit! Cannot start defense phase.');
+            alert('Cannot start defense phase: No valid paths exist from spawn points to exit. Please ensure there are paths through your maze.');
             return;
         }
+        
+        console.log(`Found ${allPaths.length} valid paths out of ${this.spawnPoints.length} spawn points`);
         
         // Notify server that we're ready for defense phase
         this.networkManager.startDefensePhase();
@@ -556,9 +673,34 @@ export class MultiplayerGame {
             this.mazeInputManager = null;
         }
         
-        // Update path visualization with the valid path
-        this.updatePathVisualization(initialPath);
+        // Update path visualization with all valid paths
+        this.updateMultiplePathVisualization(allPaths);
         
+        // Initialize environment with multiple spawn points and exit point
+        if (this.environmentManager) {
+            this.initializeCooperativeEnvironment();
+        }
+        
+    }
+    
+    /**
+     * Initialize environment for cooperative mode with multiple spawn points
+     */
+    async initializeCooperativeEnvironment() {
+        try {
+            const obstacles = this.getAllObstacles();
+            
+            // Initialize environment with multiple spawn points
+            await this.environmentManager.initializeCooperativeEnvironment(
+                obstacles, 
+                this.spawnPoints, 
+                this.exitPoint
+            );
+            
+            console.log('Cooperative environment initialized with dual spawn points');
+        } catch (error) {
+            console.error('Failed to initialize cooperative environment:', error);
+        }
     }
 
     /**
@@ -862,6 +1004,15 @@ export class MultiplayerGame {
         if (this.controls) {
             this.controls.dispose();
             this.controls = null;
+        }
+        
+        // Cleanup paths
+        this.clearAllPathLines();
+        
+        // Cleanup environment
+        if (this.environmentManager) {
+            this.environmentManager.clearEnvironment();
+            this.environmentManager = null;
         }
         
         // Cleanup scene

@@ -258,20 +258,41 @@ class GameSession {
                 // Start defense phase
                 this.gameState.gamePhase = 'defense';
                 
-                // Calculate paths for each player
-                for (const [playerId, playerData] of this.players) {
-                    const path = this.gameLogic.calculatePath(playerId);
+                if (this.gameMode === 'cooperative') {
+                    // Cooperative mode: calculate shared path
+                    const path = this.gameLogic.calculatePath('player1'); // Use any player ID for shared calculation
                     if (path) {
-                        // Store path in game state
-                        this.gameState.setPlayerPath(playerId, path);
+                        // Store shared path for all players
+                        for (const [playerId, playerData] of this.players) {
+                            this.gameState.setPlayerPath(playerId, path);
+                        }
                         
-                        // Notify players
+                        // Notify all players with the shared path
                         this.broadcastToSession('game:defense_started', {
-                            playerId,
-                            path,
+                            sharedPath: path,
+                            gameMode: 'cooperative',
                             timestamp: Date.now()
                         });
                     }
+                } else {
+                    // Competitive mode: calculate paths for each player
+                    const pathUpdates = {};
+                    
+                    for (const [playerId, playerData] of this.players) {
+                        const path = this.gameLogic.calculatePath(playerId);
+                        if (path) {
+                            // Store path in game state
+                            this.gameState.setPlayerPath(playerId, path);
+                            pathUpdates[playerId] = path;
+                        }
+                    }
+                    
+                    // Notify players with their individual paths
+                    this.broadcastToSession('game:defense_started', {
+                        paths: pathUpdates,
+                        gameMode: 'competitive',
+                        timestamp: Date.now()
+                    });
                 }
                 
                 // Start enemy spawning

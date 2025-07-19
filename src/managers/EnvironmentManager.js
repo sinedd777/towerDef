@@ -33,7 +33,169 @@ export class EnvironmentManager {
     }
 
     /**
-     * Add spawn point models
+     * Initialize environment for cooperative mode with multiple spawn points
+     * @param {Array} obstacles - Array of obstacle positions to avoid
+     * @param {Array<THREE.Vector3>} spawnPoints - Array of enemy spawn positions
+     * @param {THREE.Vector3} exitPoint - Single exit position
+     */
+    async initializeCooperativeEnvironment(obstacles = [], spawnPoints = [], exitPoint) {
+        try {
+            // Clear existing environment objects
+            this.clearEnvironment();
+            
+            // Add multiple spawn points and single exit point
+            await this.addCooperativeSpawnPoints(spawnPoints, exitPoint);
+            
+            // Scatter environmental details (adjusted for multiple spawns and single exit)
+            await this.scatterCooperativeEnvironmentalObjects(obstacles, spawnPoints, exitPoint);
+            
+            console.log(`Cooperative environment initialized with ${spawnPoints.length} spawn points and ${this.environmentObjects.length} objects`);
+        } catch (error) {
+            console.error('Failed to initialize cooperative environment:', error);
+        }
+    }
+
+    /**
+     * Add spawn point models for cooperative mode
+     * @param {Array<THREE.Vector3>} spawnPoints - Array of enemy spawn positions  
+     * @param {THREE.Vector3} exitPoint - Single exit position
+     */
+    async addCooperativeSpawnPoints(spawnPoints, exitPoint) {
+        try {
+            // Add multiple spawn points
+            for (let i = 0; i < spawnPoints.length; i++) {
+                const spawnPoint = spawnPoints[i];
+                const spawnModel = await assetManager.loadAsset('environment', 'spawn-round');
+                spawnModel.position.copy(spawnPoint);
+                spawnModel.position.y = 0;
+                spawnModel.scale.set(1.2, 1.2, 1.2);
+                
+                // Add green glow effect for spawn points
+                spawnModel.traverse((child) => {
+                    if (child.isMesh && child.material) {
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach(mat => {
+                                mat.emissive = new THREE.Color(0x00ff00);
+                                mat.emissiveIntensity = 0.3;
+                            });
+                        } else {
+                            child.material.emissive = new THREE.Color(0x00ff00);
+                            child.material.emissiveIntensity = 0.3;
+                        }
+                    }
+                });
+                
+                this.scene.add(spawnModel);
+                this.spawnPoints.push(spawnModel);
+                
+                console.log(`Added spawn point ${i + 1} at (${spawnPoint.x}, ${spawnPoint.z})`);
+            }
+            
+            // Add single exit point
+            const exitModel = await assetManager.loadAsset('environment', 'spawn-square');
+            exitModel.position.copy(exitPoint);
+            exitModel.position.y = 0;
+            exitModel.scale.set(1.4, 1.4, 1.4); // Slightly larger for exit
+            
+            // Add red glow for exit point
+            exitModel.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach(mat => {
+                            mat.emissive = new THREE.Color(0xff0000);
+                            mat.emissiveIntensity = 0.4;
+                        });
+                    } else {
+                        child.material.emissive = new THREE.Color(0xff0000);
+                        child.material.emissiveIntensity = 0.4;
+                    }
+                }
+            });
+            
+            this.scene.add(exitModel);
+            this.spawnPoints.push(exitModel);
+            
+            console.log(`Added exit point at (${exitPoint.x}, ${exitPoint.z})`);
+            
+        } catch (error) {
+            console.error('Failed to add cooperative spawn points:', error);
+        }
+    }
+
+    /**
+     * Scatter environmental objects for cooperative mode
+     */
+    async scatterCooperativeEnvironmentalObjects(obstacles, spawnPoints, exitPoint) {
+        const objectTypes = [
+            { category: 'environment', key: 'tree', weight: 0.3, scale: [1.2, 1.8] },
+            { category: 'environment', key: 'rocks', weight: 0.25, scale: [0.9, 1.5] },
+            { category: 'environment', key: 'crystal', weight: 0.2, scale: [1.0, 1.6] },
+            { category: 'environment', key: 'dirt', weight: 0.25, scale: [0.8, 1.3] }
+        ];
+
+        const halfGrid = this.gridSize / 2;
+        const totalObjects = Math.floor(this.gridSize * 0.8); // Slightly fewer objects for cooperative mode
+        let placedObjects = 0;
+
+        for (let attempt = 0; attempt < totalObjects * 3 && placedObjects < totalObjects; attempt++) {
+            const position = new THREE.Vector3(
+                (Math.random() - 0.5) * this.gridSize,
+                0,
+                (Math.random() - 0.5) * this.gridSize
+            );
+
+                         if (this.isValidCooperativePosition(position, obstacles, spawnPoints, exitPoint, 2.5)) {
+                 const objectType = this.selectWeightedRandom(objectTypes);
+                try {
+                    const envObject = await assetManager.loadAsset(objectType.category, objectType.key);
+                    if (envObject) {
+                        envObject.position.copy(position);
+                        envObject.position.y = 0;
+                        
+                        const scale = objectType.scale[0] + Math.random() * (objectType.scale[1] - objectType.scale[0]);
+                        envObject.scale.set(scale, scale, scale);
+                        
+                        envObject.rotation.y = Math.random() * Math.PI * 2;
+                        
+                        this.scene.add(envObject);
+                        this.environmentObjects.push(envObject);
+                        placedObjects++;
+                    }
+                } catch (error) {
+                    console.warn(`Failed to load environmental object ${objectType.key}:`, error);
+                }
+            }
+        }
+    }
+
+    /**
+     * Check if a position is valid for cooperative mode (away from all spawn points and exit)
+     */
+    isValidCooperativePosition(position, obstacles, spawnPoints, exitPoint, minDistance) {
+        // Check distance from all spawn points
+        for (const spawnPoint of spawnPoints) {
+            if (position.distanceTo(spawnPoint) < minDistance) return false;
+        }
+        
+        // Check distance from exit point
+        if (position.distanceTo(exitPoint) < minDistance) return false;
+        
+        // Check distance from obstacles
+        for (const obstacle of obstacles) {
+            const obstaclePos = new THREE.Vector3(obstacle.x, 0, obstacle.z);
+            if (position.distanceTo(obstaclePos) < minDistance) return false;
+        }
+        
+        // Check distance from existing environment objects
+        for (const envObj of this.environmentObjects) {
+            if (position.distanceTo(envObj.position) < minDistance * 0.8) return false;
+        }
+        
+        return true;
+    }
+
+    /**
+     * Add spawn point models (original single-player method)
      */
     async addSpawnPoints(enemyStart, enemyEnd) {
         try {

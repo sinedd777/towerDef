@@ -324,8 +324,58 @@ class GameState {
         const startPos = { x: mapPos.x - 10, z: mapPos.z - 10 };
         const endPos = { x: mapPos.x + 10, z: mapPos.z + 10 };
         
-        // Simple path for now - should use pathfinding algorithm with maze
+        // Simple fallback path - this will be replaced by proper A* pathfinding
         return [startPos, endPos];
+    }
+    
+    // Get maze obstacles for a specific player
+    getMazeObstacles(playerId) {
+        const obstacles = [];
+        const mapPos = this.getPlayerMapPosition(playerId);
+        
+        for (const [posKey, mazePiece] of this.maze) {
+            // Parse position key (format: "x,z,playerId")
+            const [x, z, piecePlayerId] = posKey.split(',').map(v => parseFloat(v));
+            
+            // Only include maze pieces for this player
+            if (piecePlayerId === playerId || posKey.endsWith(`,${playerId}`)) {
+                obstacles.push({ x, z });
+            }
+        }
+        
+        return obstacles;
+    }
+    
+    // Get tower obstacles for a specific player
+    getTowerObstacles(playerId) {
+        const obstacles = [];
+        
+        for (const [towerId, tower] of this.towers) {
+            // Only include towers for this player
+            if (tower.playerId === playerId) {
+                obstacles.push({ 
+                    x: tower.position.x, 
+                    z: tower.position.z 
+                });
+            }
+        }
+        
+        return obstacles;
+    }
+    
+    // Set/get player paths for pathfinding
+    setPlayerPath(playerId, path) {
+        if (!this.playerPaths) {
+            this.playerPaths = new Map();
+        }
+        this.playerPaths.set(playerId, path);
+    }
+    
+    getPlayerPath(playerId) {
+        if (!this.playerPaths) {
+            return null;
+        }
+        return this.playerPaths.get(playerId);
     }
     
     // Tower/Enemy Combat
