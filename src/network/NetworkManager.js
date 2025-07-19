@@ -34,6 +34,21 @@ export class NetworkManager {
 
         // Matchmaking state
         this.isInMatchmaking = false;
+        
+        // State sync intervals
+        this.lastEnemySync = 0;
+        this.lastTowerSync = 0;
+        this.enemySyncInterval = 300; // ms
+        this.towerSyncInterval = 200; // ms
+        
+        // State caches for delta compression
+        this.lastSentEnemyStates = new Map();
+        this.lastSentTowerStates = new Map();
+
+        // Wave synchronization
+        this.currentWave = 0;
+        this.waveData = null;
+        this.isWaveInProgress = false;
     }
     
     // Connect to the multiplayer server
@@ -372,7 +387,35 @@ export class NetworkManager {
     }
     
     startDefensePhase() {
-        this.sendPlayerAction('start_defense_phase', {});
+        if (!this.socket || !this.sessionId) {
+            console.error('Cannot start defense phase - not in session');
+            return;
+        }
+
+        console.log('Requesting defense phase start');
+        this.socket.emit('game:start_defense', {
+            sessionId: this.sessionId,
+            playerId: this.playerId,
+            ready: true
+        });
+    }
+
+    setOnDefensePhaseStarted(callback) {
+        if (!this.socket) return;
+
+        this.socket.on('game:defense_started', (data) => {
+            console.log('Defense phase started:', data);
+            if (callback) callback(data);
+        });
+    }
+
+    setOnEnemySpawned(callback) {
+        if (!this.socket) return;
+
+        this.socket.on('game:enemy_spawned', (data) => {
+            console.log('Enemy spawned:', data);
+            if (callback) callback(data);
+        });
     }
     
     // Matchmaking methods
@@ -482,6 +525,218 @@ export class NetworkManager {
         }
     }
     
+    // High Priority Updates - Immediate Sync
+    sendMazeUpdate(mazeData) {
+        this.socket.emit('maze_update', {
+            type: 'maze_piece',
+            data: mazeData,
+            timestamp: Date.now()
+        });
+    }
+
+    sendTowerPlacement(towerData) {
+        this.socket.emit('tower_update', {
+            type: 'tower_placed',
+            data: towerData,
+            timestamp: Date.now()
+        });
+    }
+
+    sendGameStateUpdate(gameState) {
+        this.socket.emit('game_state', {
+            health: gameState.health,
+            score: gameState.score,
+            resources: gameState.resources,
+            wave: gameState.wave,
+            timestamp: Date.now()
+        });
+    }
+
+    // Medium Priority Updates - Batched
+    sendEnemySpawn(enemyData) {
+        // Send minimal spawn data
+        this.socket.emit('enemy_spawn', {
+            id: enemyData.id,
+            type: enemyData.type,
+            pathIndices: enemyData.pathIndices,
+            speed: enemyData.speed,
+            spawnTime: Date.now()
+        });
+    }
+
+    // Low Priority Updates - Optimized
+    syncEnemyStates(enemies) {
+        const now = Date.now();
+        if (now - this.lastEnemySync < this.enemySyncInterval) return;
+        
+        const updates = [];
+        enemies.forEach(enemy => {
+            const lastState = this.lastSentEnemyStates.get(enemy.id);
+            
+            // Calculate significant changes
+            const hasSignificantChange = this.hasSignificantStateChange(enemy, lastState);
+            
+            if (hasSignificantChange) {
+                const update = {
+                    id: enemy.id,
+                    pathIndex: enemy.currentPathIndex,
+                    health: enemy.health,
+                    // Only include position if significantly different
+                    position: hasSignificantChange.includePosition ? {
+                        x: enemy.mesh.position.x,
+                        y: enemy.mesh.position.y,
+                        z: enemy.mesh.position.z
+                    } : undefined
+                };
+                
+                updates.push(update);
+                this.lastSentEnemyStates.set(enemy.id, { ...update });
+            }
+        });
+        
+        if (updates.length > 0) {
+            this.socket.emit('enemy_states', {
+                updates,
+                timestamp: now
+            });
+        }
+        
+        this.lastEnemySync = now;
+    }
+
+    hasSignificantStateChange(currentState, lastState) {
+        if (!lastState) return { includePosition: true };
+        
+        const healthChanged = !lastState.health || 
+                            Math.abs(currentState.health - lastState.health) > 5;
+                            
+        const positionChanged = !lastState.position ||
+                               this.getPositionDelta(currentState.mesh.position, lastState.position) > 0.5;
+                               
+        const pathIndexChanged = currentState.currentPathIndex !== lastState.pathIndex;
+        
+        return {
+            includePosition: positionChanged,
+            includeHealth: healthChanged,
+            includePathIndex: pathIndexChanged
+        };
+    }
+
+    getPositionDelta(pos1, pos2) {
+        if (!pos2) return Infinity;
+        const dx = pos1.x - pos2.x;
+        const dy = pos1.y - pos2.y;
+        const dz = pos1.z - pos2.z;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    // Handle incoming state updates
+    setupStateHandlers() {
+        this.socket.on('enemy_states', (data) => {
+            // Apply received enemy updates with interpolation
+            data.updates.forEach(update => {
+                const enemy = this.gameState.enemies.get(update.id);
+                if (enemy) {
+                    if (update.position) {
+                        this.interpolateEnemyPosition(enemy, update.position, data.timestamp);
+                    }
+                    if (update.health !== undefined) {
+                        enemy.health = update.health;
+                    }
+                    if (update.pathIndex !== undefined) {
+                        enemy.currentPathIndex = update.pathIndex;
+                    }
+                }
+            });
+        });
+    }
+
+    interpolateEnemyPosition(enemy, newPosition, timestamp) {
+        const latency = Date.now() - timestamp;
+        const interpolationTime = 100; // ms
+        
+        // Create interpolation data
+        enemy.interpolation = {
+            startPosition: enemy.mesh.position.clone(),
+            targetPosition: new THREE.Vector3(
+                newPosition.x,
+                newPosition.y,
+                newPosition.z
+            ),
+            startTime: Date.now(),
+            duration: interpolationTime + latency
+        };
+    }
+
+    // Server messages for wave synchronization
+    setupWaveHandlers() {
+        // Receive wave data from server
+        this.socket.on('wave_data', (data) => {
+            this.waveData = data;
+            console.log('Received wave data:', data);
+        });
+
+        // Wave start signal
+        this.socket.on('wave_start', (data) => {
+            this.currentWave = data.waveNumber;
+            this.isWaveInProgress = true;
+            
+            // Notify game to start spawning
+            this.onWaveStart?.(data);
+            console.log('Wave started:', data.waveNumber);
+        });
+
+        // Wave end signal
+        this.socket.on('wave_end', (data) => {
+            this.isWaveInProgress = false;
+            
+            // Notify game to stop spawning
+            this.onWaveEnd?.(data);
+            console.log('Wave ended:', data.waveNumber);
+        });
+
+        // Individual enemy spawn signal
+        this.socket.on('enemy_spawn_signal', (data) => {
+            // Signal the game to spawn this specific enemy
+            this.onEnemySpawnSignal?.(data);
+        });
+    }
+
+    // Client can request to start wave when ready
+    requestWaveStart() {
+        if (!this.isWaveInProgress) {
+            this.socket.emit('request_wave_start', {
+                currentWave: this.currentWave
+            });
+        }
+    }
+
+    // Set wave callbacks
+    setWaveCallbacks(callbacks) {
+        this.onWaveStart = callbacks.onWaveStart;
+        this.onWaveEnd = callbacks.onWaveEnd;
+        this.onEnemySpawnSignal = callbacks.onEnemySpawnSignal;
+    }
+
+    // Report wave completion
+    reportWaveComplete(stats) {
+        this.socket.emit('wave_complete', {
+            waveNumber: this.currentWave,
+            enemiesKilled: stats.enemiesKilled,
+            healthRemaining: stats.healthRemaining,
+            score: stats.score
+        });
+    }
+
+    // Get current wave status
+    getWaveStatus() {
+        return {
+            currentWave: this.currentWave,
+            isInProgress: this.isWaveInProgress,
+            waveData: this.waveData
+        };
+    }
+
     // Cleanup resources
     cleanup() {
         if (this.pingInterval) {
@@ -498,6 +753,8 @@ export class NetworkManager {
         this.sessionId = null;
         this.playerId = null;
         this.isHost = false;
+        this.lastSentEnemyStates.clear();
+        this.lastSentTowerStates.clear();
     }
     
     // Event callback setters

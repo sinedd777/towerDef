@@ -12,6 +12,8 @@ import { TowerSelectionUI } from '../ui/TowerSelectionUI.js';
 import { TowerManagementUI } from '../ui/TowerManagementUI.js';
 import { assetManager } from '../managers/AssetManager.js';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import { Enemy } from '../Enemy.js';
+import { Pathfinding } from '../Pathfinding.js';
 
 export class MultiplayerGame {
     constructor() {
@@ -26,6 +28,20 @@ export class MultiplayerGame {
         this.controls = null;
         this.gameState = null;
         this.mazeState = null;
+        this.pathfinding = null;  // Add pathfinding
+        
+        // Game objects
+        this.enemies = new Map();
+        this.towers = new Map();
+        
+        // Game constants
+        this.enemyStartPosition = new THREE.Vector3(-8, 0.1, -8);
+        this.enemyEndPosition = new THREE.Vector3(8, 0.1, 8);
+        this.lastEnemySpawn = 0;
+        this.enemySpawnInterval = 2000;
+        
+        // Path visualization
+        this.pathLine = null;
         
         // UI systems (like single player)
         this.mazeBuilderUI = null;
@@ -111,6 +127,68 @@ export class MultiplayerGame {
             }
         });
 
+        // Add spectator update handler
+        this.networkManager.setOnGameStateUpdate((data) => {
+            if (this.spectatorOverlay && data.players) {
+                // Get opponent's data
+                const opponentId = this.localPlayerId === 'player1' ? 'player2' : 'player1';
+                const opponentData = data.players[opponentId];
+                
+                if (opponentData) {
+                    // Update opponent stats
+                    this.spectatorOverlay.updateOpponentStats({
+                        health: opponentData.health,
+                        score: opponentData.score,
+                        wave: opponentData.wave,
+                        money: opponentData.money
+                    });
+                    
+                    // Update opponent game state visualization
+                    this.spectatorOverlay.updateOpponentGameState({
+                        mazeBlocks: opponentData.mazeBlocks || [],
+                        towers: opponentData.towers || [],
+                        enemies: opponentData.enemies || [],
+                        path: opponentData.path
+                    });
+                }
+            }
+        });
+
+        // Defense phase handlers
+        this.networkManager.setOnDefensePhaseStarted((data) => {
+            console.log('Defense phase started:', data);
+            
+            // Hide maze builder UI
+            if (this.mazeBuilderUI) {
+                this.mazeBuilderUI.hide();
+            }
+            
+            // Show tower selection UI
+            if (this.towerSelectionUI) {
+                this.towerSelectionUI.show();
+            }
+            
+            // Update path visualization
+            if (data.path) {
+                this.multiplayerScene.updatePathVisualization(data.path);
+            }
+        });
+
+        // Enemy spawn handler
+        this.networkManager.setOnEnemySpawned((data) => {
+            console.log('Enemy spawned:', data);
+            
+            // Create enemy in scene
+            if (data.enemy) {
+                const enemy = new Enemy(data.enemy.path, data.enemy.wave);
+                enemy.mesh.position.copy(data.enemy.position);
+                this.multiplayerScene.scene.add(enemy.mesh);
+                
+                // Store enemy reference
+                this.enemies.set(data.enemy.id, enemy);
+            }
+        });
+
         // Session handlers
         this.networkManager.setOnSessionJoined((data) => {
             console.log('*** SESSION JOINED EVENT FIRED ***', Date.now());
@@ -184,6 +262,29 @@ export class MultiplayerGame {
 
         this.animationId = requestAnimationFrame(() => this.gameLoop());
 
+        const currentTime = Date.now();
+
+        // Animate path line
+        if (this.pathLine) {
+            this.pathLine.material.dashOffset -= 0.02;
+        }
+
+        // Display path continuously during maze building
+        if (this.gameState.isMazeBuilding()) {
+            const obstacles = this.getAllObstacles();
+            const currentPath = this.pathfinding.findPath(
+                { x: this.enemyStartPosition.x, z: this.enemyStartPosition.z },
+                { x: this.enemyEndPosition.x, z: this.enemyEndPosition.z },
+                obstacles
+            );
+            this.updatePathVisualization(currentPath);
+        }
+
+        // Update enemies
+        for (const [enemyId, enemy] of this.enemies) {
+            enemy.update();
+        }
+
         // Update controls
         if (this.controls) {
             this.controls.update();
@@ -197,6 +298,53 @@ export class MultiplayerGame {
         // Render labels
         if (this.labelRenderer && this.multiplayerScene && this.camera) {
             this.labelRenderer.render(this.multiplayerScene.scene, this.camera);
+        }
+    }
+
+    getAllObstacles() {
+        const obstacles = [];
+        
+        // Add maze blocks
+        const mazeObstacles = this.mazeState.getObstacles();
+        obstacles.push(...mazeObstacles);
+        
+        // Add towers
+        for (const [_, tower] of this.towers) {
+            const pos = tower.getPosition();
+            obstacles.push({ x: pos.x, z: pos.z });
+        }
+        
+        return obstacles;
+    }
+
+    updatePathVisualization(waypoints) {
+        // Remove existing path line
+        if (this.pathLine) {
+            this.multiplayerScene.scene.remove(this.pathLine);
+            this.pathLine.geometry.dispose();
+            this.pathLine.material.dispose();
+            this.pathLine = null;
+        }
+
+        // Only create new path line if waypoints exist
+        if (waypoints && waypoints.length > 0) {
+            const positions = waypoints.map(waypoint => {
+                return waypoint.position ? waypoint.position.clone() : waypoint.clone();
+            });
+
+            const pathGeometry = new THREE.BufferGeometry().setFromPoints(positions);
+
+            const pathMaterial = new THREE.LineDashedMaterial({
+                color: 0xff0000,
+                dashSize: 0.2,
+                gapSize: 0.8,
+                transparent: true,
+                opacity: 0.9
+            });
+
+            this.pathLine = new THREE.Line(pathGeometry, pathMaterial);
+            this.pathLine.computeLineDistances();
+            this.multiplayerScene.scene.add(this.pathLine);
         }
     }
 
@@ -287,6 +435,7 @@ export class MultiplayerGame {
             // Create game state
             this.gameState = new GameState();
             this.mazeState = new MazeState(this.multiplayerScene.scene, 20);
+            this.pathfinding = new Pathfinding(20);  // Initialize pathfinding
             
             // Initialize UI systems (like single player)
             this.mazeBuilderUI = new MazeBuilderUI(this.mazeState, this.gameState);
@@ -295,8 +444,7 @@ export class MultiplayerGame {
             
             // Setup UI callbacks
             this.mazeBuilderUI.setOnStartDefenseCallback(() => {
-                // Will implement defense phase later
-                console.log('Defense phase starting...');
+                this.startDefensePhase();
             });
             
             // Hide tower selection UI initially (show only during defense phase)
@@ -335,6 +483,45 @@ export class MultiplayerGame {
         } finally {
             this.isInitializing = false; // Reset flag after initialization attempt
         }
+    }
+
+    startDefensePhase() {
+        console.log('Starting defense phase...');
+        
+        // Calculate initial path
+        const obstacles = this.getAllObstacles();
+        const initialPath = this.pathfinding.findPath(
+            { x: this.enemyStartPosition.x, z: this.enemyStartPosition.z },
+            { x: this.enemyEndPosition.x, z: this.enemyEndPosition.z },
+            obstacles
+        );
+
+        // Check if there's a valid path before starting defense phase
+        if (!initialPath) {
+            console.error('No valid path exists from start to end! Cannot start defense phase.');
+            alert('Cannot start defense phase: No valid path exists from start to end. Please ensure there is a path through your maze.');
+            return;
+        }
+        
+        // Notify server that we're ready for defense phase
+        this.networkManager.startDefensePhase();
+        
+        // Hide maze builder UI
+        this.mazeBuilderUI.hide();
+        
+        // Show tower selection UI
+        this.towerSelectionUI.show();
+        
+        // Cleanup maze input
+        if (this.mazeInputManager) {
+            this.mazeInputManager.cleanup();
+            this.mazeInputManager = null;
+        }
+        
+        // Update path visualization with the valid path
+        this.updatePathVisualization(initialPath);
+        
+        console.log('Defense phase started');
     }
 
     /**

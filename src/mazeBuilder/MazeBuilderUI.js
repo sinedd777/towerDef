@@ -352,7 +352,9 @@ export class MazeBuilderUI {
 
     // Called when shape is placed
     onShapePlaced() {
+        console.log('Shape placed! Current hand before update:', this.mazeState.currentShapeHand.map(s => s.name));
         this.playCardSelectionAnimation();
+        console.log('Shape placed! Current hand after update:', this.mazeState.currentShapeHand.map(s => s.name));
     }
 
     // Update shape selection (visual feedback)

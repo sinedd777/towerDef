@@ -223,8 +223,43 @@ class GameSession {
     handlePlayerAction(socketId, action, data) {
         const player = this.players.get(socketId);
         if (!player || this.status !== 'active') return false;
-        
-        // Validate and process action through game logic
+
+        // Handle defense phase start
+        if (action === 'game:start_defense') {
+            player.ready = true;
+            
+            // Check if all players are ready
+            const allReady = Array.from(this.players.values()).every(p => p.ready);
+            
+            if (allReady) {
+                // Start defense phase
+                this.gameState.gamePhase = 'defense';
+                
+                // Calculate paths for each player
+                for (const [playerId, playerData] of this.players) {
+                    const path = this.gameLogic.calculatePath(playerId);
+                    if (path) {
+                        // Store path in game state
+                        this.gameState.setPlayerPath(playerId, path);
+                        
+                        // Notify players
+                        this.broadcastToSession('game:defense_started', {
+                            playerId,
+                            path,
+                            timestamp: Date.now()
+                        });
+                    }
+                }
+                
+                // Start enemy spawning
+                this.gameState.lastEnemySpawn = Date.now();
+                this.startEnemySpawning();
+            }
+            
+            return { success: true };
+        }
+
+        // Process other actions through game logic
         const result = this.gameLogic.processPlayerAction(player.playerId, action, data);
         
         if (result.success) {
@@ -238,6 +273,40 @@ class GameSession {
         }
         
         return result;
+    }
+
+    startEnemySpawning() {
+        // Start spawning enemies every 2 seconds
+        this.enemySpawnInterval = setInterval(() => {
+            if (this.gameState.gamePhase === 'defense') {
+                for (const [playerId, playerData] of this.players) {
+                    const path = this.gameState.getPlayerPath(playerId);
+                    if (path) {
+                        const enemyId = `enemy_${playerId}_${Date.now()}`;
+                        const enemy = {
+                            id: enemyId,
+                            playerId,
+                            wave: this.gameState.currentWave,
+                            health: 100,
+                            position: path[0],
+                            path: path
+                        };
+
+                        // Add enemy to game state
+                        this.gameState.enemies.set(enemyId, enemy);
+
+                        // Notify players
+                        this.broadcastToSession('game:enemy_spawned', {
+                            enemy,
+                            timestamp: Date.now()
+                        });
+                    }
+                }
+            } else {
+                // Stop spawning if game phase changes
+                clearInterval(this.enemySpawnInterval);
+            }
+        }, 2000);
     }
     
     // Communication

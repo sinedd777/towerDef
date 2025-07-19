@@ -18,6 +18,7 @@ export class MazeState {
         this.restrictedAreaMarkers = []; // Visual markers for restricted areas
         this.pathfinding = new Pathfinding(gridSize);
         this.lastPlacedShape = null;
+        this.isPlacing = false; // Add placement lock
         
         // Path constraints - start and end must remain clear
         // Start area is 2x2 in top-left corner at (-8,-8)
@@ -143,6 +144,8 @@ export class MazeState {
     createCohesiveShapeGeometry(shape, blockHeight = 0.5, blockSize = 1.0) {
         const geometries = [];
         
+        console.log('Creating geometry for shape:', shape.name, 'with cells:', shape.cells);
+        
         // Create individual block geometries that touch each other
         for (const cell of shape.cells) {
             // Use full-size blocks (1.0) so they touch and create seamless appearance
@@ -155,8 +158,9 @@ export class MazeState {
                 8  // Depth segments for smoother beveling
             );
             
-            // Position the geometry at exact grid positions
+            // Position the geometry at relative cell positions (NOT world positions)
             blockGeometry.translate(cell[0], blockHeight / 2, cell[1]);
+            console.log('Translating block to:', cell[0], blockHeight / 2, cell[1]);
             geometries.push(blockGeometry);
         }
         
@@ -271,6 +275,14 @@ export class MazeState {
 
     clearPreview() {
         if (this.shapePreview) {
+            // Properly dispose of geometry and materials to prevent memory leaks
+            if (this.shapePreview.geometry) {
+                this.shapePreview.geometry.dispose();
+            }
+            if (this.shapePreview.material) {
+                this.shapePreview.material.dispose();
+            }
+            
             this.scene.remove(this.shapePreview);
             this.shapePreview = null;
         }
@@ -298,14 +310,17 @@ export class MazeState {
 
     rotateSelectedShape() {
         if (this.selectedShape && this.selectedShape.rotate()) {
-            // Store the current position
+            // Store the current position before clearing
             const currentPosition = this.lastPreviewPosition || { x: 0, z: 0 };
             
-            // Recreate preview
+            // Properly clear the old preview first
+            this.clearPreview();
+            
+            // Create new preview with rotated shape
             this.createPreview();
             
             // Restore position if it exists
-            if (this.lastPreviewPosition) {
+            if (currentPosition) {
                 this.updatePreview(currentPosition.x, currentPosition.z);
             }
             
@@ -349,10 +364,18 @@ export class MazeState {
         );
 
         if (meshToRemove) {
+            // Properly dispose of geometry and material
+            if (meshToRemove.geometry) {
+                meshToRemove.geometry.dispose();
+            }
+            if (meshToRemove.material) {
+                meshToRemove.material.dispose();
+            }
+            
             this.scene.remove(meshToRemove);
-            const index = this.gridBlocks.indexOf(meshToRemove);
-            if (index !== -1) {
-                this.gridBlocks.splice(index, 1);
+            const blockIndex = this.gridBlocks.indexOf(meshToRemove);
+            if (blockIndex !== -1) {
+                this.gridBlocks.splice(blockIndex, 1);
             }
         }
 
@@ -366,19 +389,36 @@ export class MazeState {
     }
 
     placeShape(worldX, worldZ) {
-        if (!this.selectedShape) return false;
+        if (!this.selectedShape) {
+            console.log('No shape selected for placement');
+            return false;
+        }
+        
+        if (this.isPlacing) {
+            console.log('Already placing a shape, ignoring this placement');
+            return false;
+        }
+        
+        this.isPlacing = true; // Lock placement
+        console.log('Starting placement for shape:', this.selectedShape.name);
         
         // Snap to grid cell centers by adding 0.5
         const gridX = Math.floor(worldX) + 0.5;
         const gridZ = Math.floor(worldZ) + 0.5;
         
+        console.log('Attempting to place at grid position:', gridX, gridZ);
+        
         if (!this.selectedShape.canPlaceAt(gridX, gridZ, this.gridState, this.gridSize)) {
+            console.log('Cannot place shape at this position');
+            this.isPlacing = false; // Unlock
             return false;
         }
         
         // Place the shape
         this.selectedShape.position = { x: gridX, z: gridZ };
         this.selectedShape.placeInGrid(this.gridState, this.gridSize);
+        
+        console.log('Shape placed in grid state');
         
         // Create visual blocks
         this.createVisualBlocks(this.selectedShape);
@@ -391,15 +431,18 @@ export class MazeState {
         const handIndex = this.currentShapeHand.indexOf(this.selectedShape);
         if (handIndex !== -1) {
             this.currentShapeHand.splice(handIndex, 1);
+            console.log('Removed shape from hand. New hand size:', this.currentShapeHand.length);
         }
 
         // Check if path is still valid
         const validPath = this.validatePath();
         if (!validPath) {
+            console.log('Path blocked, undoing placement');
             // Show alert
             alert('This placement blocks all paths to the end! Click OK to undo and try again.');
             // Undo the placement
             this.undoLastPlacement();
+            this.isPlacing = false; // Unlock
             return false;
         }
         
@@ -407,10 +450,18 @@ export class MazeState {
         this.selectedShape = null;
         this.clearPreview();
         
+        console.log('Placement completed successfully');
+        this.isPlacing = false; // Unlock
+        
         return true;
     }
 
     createVisualBlocks(shape) {
+        console.log('Creating visual blocks for shape:', shape.name);
+        console.log('Shape position:', shape.position);
+        console.log('Shape cells:', shape.cells);
+        console.log('World cells:', shape.getWorldCells());
+        
         // Create a cohesive merged geometry for the placed shape
         const mergedGeometry = this.createCohesiveShapeGeometry(shape, 0.5, 1.0);
         
@@ -427,12 +478,15 @@ export class MazeState {
         const shapeMesh = new THREE.Mesh(mergedGeometry, material);
         
         // Position the shape at its world position
+        // NOTE: The geometry already includes the shape offset, so we position at the shape's grid position
         shapeMesh.position.set(shape.position.x, 0, shape.position.z);
         shapeMesh.castShadow = true;
         shapeMesh.receiveShadow = true;
         
         // Store reference to the shape for easier management
         shapeMesh.userData.shape = shape;
+        
+        console.log('Mesh final position:', shapeMesh.position);
         
         this.scene.add(shapeMesh);
         this.gridBlocks.push(shapeMesh);
