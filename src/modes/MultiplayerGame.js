@@ -1,12 +1,15 @@
 import * as THREE from 'three';
 import { NetworkManager } from '../network/NetworkManager.js';
 import { MultiplayerScene } from '../multiplayer/MultiplayerScene.js';
-import { MultiplayerCamera } from '../multiplayer/MultiplayerCamera.js';
 import { MultiplayerInputManager } from '../multiplayer/MultiplayerInputManager.js';
-import { MultiplayerStatusUI } from '../ui/MultiplayerStatusUI.js';
-import { PrivateControlPanel } from '../ui/PrivateControlPanel.js';
 import { LoadingScreen } from '../ui/LoadingScreen.js';
+import { SpectatorOverlay } from '../ui/SpectatorOverlay.js';
 import { GameState } from '../GameState.js';
+import { MazeState } from '../mazeBuilder/MazeState.js';
+import { MazeBuilderUI } from '../mazeBuilder/MazeBuilderUI.js';
+import { MazeInputManager } from '../mazeBuilder/MazeInputManager.js';
+import { TowerSelectionUI } from '../ui/TowerSelectionUI.js';
+import { TowerManagementUI } from '../ui/TowerManagementUI.js';
 import { assetManager } from '../managers/AssetManager.js';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 
@@ -14,15 +17,23 @@ export class MultiplayerGame {
     constructor() {
         // Core systems
         this.networkManager = null;
-        this.multiplayerStatusUI = null;
-        this.privateControlPanel = null;
         this.loadingScreen = null;
+        this.spectatorOverlay = null;
         
         // Game systems
         this.multiplayerScene = null;
-        this.multiplayerCamera = null;
-        this.multiplayerInput = null;
+        this.camera = null;
+        this.controls = null;
         this.gameState = null;
+        this.mazeState = null;
+        
+        // UI systems (like single player)
+        this.mazeBuilderUI = null;
+        this.towerSelectionUI = null;
+        this.towerManagementUI = null;
+        
+        // Input managers
+        this.mazeInputManager = null;
         
         // Rendering
         this.renderer = null;
@@ -32,6 +43,9 @@ export class MultiplayerGame {
         this.localPlayerId = null;
         this.isConnected = false;
         this.isInSession = false;
+        this.isRunning = false;
+        this.animationId = null;
+        this.isInitializing = false; // Add initialization flag
         
         // Callbacks
         this.onMatchmakingUpdate = null;
@@ -95,15 +109,11 @@ export class MultiplayerGame {
             if (this.loadingScreen) {
                 this.loadingScreen.show();
             }
-            
-            // Update status if available
-            if (this.multiplayerStatusUI) {
-                this.multiplayerStatusUI.updatePhaseIndicator('Match found - Joining session...');
-            }
         });
 
         // Session handlers
         this.networkManager.setOnSessionJoined((data) => {
+            console.log('*** SESSION JOINED EVENT FIRED ***', Date.now());
             console.log('Joined multiplayer session:', data);
             
             // Store local player ID
@@ -117,25 +127,14 @@ export class MultiplayerGame {
             
             // Initialize multiplayer game systems
             this.initializeMultiplayerSystems();
-            
-            // Update UI
-            if (this.multiplayerStatusUI) {
-                this.multiplayerStatusUI.updatePhaseIndicator('Session joined - Starting game...');
-            }
         });
         
         this.networkManager.setOnPlayerJoined((data) => {
             console.log('Another player joined:', data);
-            if (this.multiplayerStatusUI) {
-                this.multiplayerStatusUI.updatePhaseIndicator('Both players ready - Game starting!');
-            }
         });
         
         this.networkManager.setOnPlayerLeft((data) => {
             console.log('Player left:', data);
-            if (this.multiplayerStatusUI) {
-                this.multiplayerStatusUI.updatePhaseIndicator('Player left - Waiting for new player...');
-            }
         });
         
         // Connection handlers
@@ -143,10 +142,6 @@ export class MultiplayerGame {
             console.log('Disconnected from server:', reason);
             this.isConnected = false;
             this.isInSession = false;
-            
-            if (this.multiplayerStatusUI) {
-                this.multiplayerStatusUI.updatePhaseIndicator('Disconnected from server');
-            }
             
             // Show error message and option to reconnect
             this.showMultiplayerError('Connection lost. Attempting to reconnect...');
@@ -159,16 +154,84 @@ export class MultiplayerGame {
     }
 
     /**
+     * Start the game loop
+     */
+    start() {
+        if (!this.isRunning) {
+            this.isRunning = true;
+            this.gameLoop();
+            console.log('Multiplayer game loop started');
+        }
+    }
+
+    /**
+     * Stop the game loop
+     */
+    stop() {
+        this.isRunning = false;
+        if (this.animationId !== null) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+        console.log('Multiplayer game loop stopped');
+    }
+
+    /**
+     * Main game loop
+     */
+    gameLoop() {
+        if (!this.isRunning) return;
+
+        this.animationId = requestAnimationFrame(() => this.gameLoop());
+
+        // Update controls
+        if (this.controls) {
+            this.controls.update();
+        }
+
+        // Render the scene
+        if (this.renderer && this.multiplayerScene && this.camera) {
+            this.renderer.render(this.multiplayerScene.scene, this.camera);
+        }
+
+        // Render labels
+        if (this.labelRenderer && this.multiplayerScene && this.camera) {
+            this.labelRenderer.render(this.multiplayerScene.scene, this.camera);
+        }
+    }
+
+    /**
      * Initialize multiplayer game systems after session join
      */
     async initializeMultiplayerSystems() {
-        // Show loading screen while assets are loading
-        if (this.loadingScreen) {
-            this.loadingScreen.show();
-            this.loadingScreen.setStatus('Loading game assets...');
+        // Prevent double initialization with flag-based protection
+        if (this.isInitializing) {
+            console.log('Initialization already in progress, skipping...');
+            return;
         }
-
+        
+        if (this.multiplayerScene || this.mazeInputManager) {
+            console.log('Multiplayer systems already initialized, skipping...');
+            return;
+        }
+        
+        this.isInitializing = true; // Set flag to prevent concurrent initialization
+        console.log('Starting multiplayer systems initialization...');
+        
         try {
+            // Ensure any existing input manager is cleaned up first
+            if (this.mazeInputManager) {
+                console.log('Cleaning up existing MazeInputManager before creating new one');
+                this.mazeInputManager.cleanup();
+                this.mazeInputManager = null;
+            }
+            
+            // Show loading screen while assets are loading
+            if (this.loadingScreen) {
+                this.loadingScreen.show();
+                this.loadingScreen.setStatus('Loading game assets...');
+            }
+
             // Preload essential assets before creating scene
             await assetManager.preloadEssentialAssets((progress) => {
                 if (this.loadingScreen) {
@@ -176,8 +239,8 @@ export class MultiplayerGame {
                 }
             });
             
-            // Create multiplayer scene
-            this.multiplayerScene = new MultiplayerScene();
+            // Create multiplayer scene with local player ID
+            this.multiplayerScene = new MultiplayerScene(this.localPlayerId);
             
             // Setup renderer
             this.renderer = new THREE.WebGLRenderer({ 
@@ -195,7 +258,7 @@ export class MultiplayerGame {
             this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
             this.renderer.toneMappingExposure = 1.6;
             this.renderer.sortObjects = true;
-            this.renderer.setClearColor(0x000000, 1);
+            this.renderer.setClearColor(0x87CEEB, 1); // Sky blue like single player
             document.body.appendChild(this.renderer.domElement);
             
             // CSS2D renderer for labels
@@ -206,34 +269,60 @@ export class MultiplayerGame {
             this.labelRenderer.domElement.style.pointerEvents = 'none';
             document.body.appendChild(this.labelRenderer.domElement);
             
-            // Initialize multiplayer camera
-            this.multiplayerCamera = new MultiplayerCamera(this.renderer);
+            // Initialize standard camera (like single player)
+            this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            this.camera.position.set(0, 20, 15);
+            this.camera.lookAt(0, 0, 0);
+            
+            // Initialize camera controls (like single player)
+            const { OrbitControls } = await import('three/examples/jsm/controls/OrbitControls.js');
+            this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+            this.controls.enableDamping = true;
+            this.controls.dampingFactor = 0.05;
+            this.controls.screenSpacePanning = false;
+            this.controls.minDistance = 5;
+            this.controls.maxDistance = 50;
+            this.controls.maxPolarAngle = Math.PI / 2;
             
             // Create game state
             this.gameState = new GameState();
+            this.mazeState = new MazeState(this.multiplayerScene.scene, 20);
             
-            // Initialize status UI if not already created
-            if (!this.multiplayerStatusUI) {
-                this.multiplayerStatusUI = new MultiplayerStatusUI();
-            }
+            // Initialize UI systems (like single player)
+            this.mazeBuilderUI = new MazeBuilderUI(this.mazeState, this.gameState);
+            this.towerSelectionUI = new TowerSelectionUI(this.gameState);
+            this.towerManagementUI = new TowerManagementUI(this.gameState, this.labelRenderer, this.camera);
             
-            // Initialize private control panel
-            this.privateControlPanel = new PrivateControlPanel(this.localPlayerId, this.gameState, this.networkManager);
-            this.privateControlPanel.show();
+            // Setup UI callbacks
+            this.mazeBuilderUI.setOnStartDefenseCallback(() => {
+                // Will implement defense phase later
+                console.log('Defense phase starting...');
+            });
             
-            // Initialize multiplayer input manager
-            this.multiplayerInput = new MultiplayerInputManager(
-                this.multiplayerScene, 
-                this.multiplayerCamera.getCamera(), 
+            // Hide tower selection UI initially (show only during defense phase)
+            this.towerSelectionUI.hide();
+
+            // Initialize spectator overlay (small and unobtrusive)
+            this.spectatorOverlay = new SpectatorOverlay();
+            this.spectatorOverlay.show();
+            
+            // Initialize maze input manager for building phase
+            this.mazeInputManager = new MazeInputManager(
+                this.multiplayerScene.scene, 
+                this.camera, 
                 this.renderer, 
-                this.gameState,
-                this.networkManager
+                this.multiplayerScene.ground,
+                this.mazeState,
+                this.mazeBuilderUI
             );
 
             // Hide loading screen once everything is ready
             if (this.loadingScreen) {
                 this.loadingScreen.hide();
             }
+            
+            // Start the game loop after initialization
+            this.start();
             
             console.log('Multiplayer game systems initialized successfully');
             
@@ -243,6 +332,8 @@ export class MultiplayerGame {
                 this.loadingScreen.setStatus('Error loading assets. Please refresh the page.');
             }
             throw error;
+        } finally {
+            this.isInitializing = false; // Reset flag after initialization attempt
         }
     }
 
@@ -295,16 +386,17 @@ export class MultiplayerGame {
      * Handle window resize
      */
     onWindowResize() {
+        if (this.camera) {
+            this.camera.aspect = window.innerWidth / window.innerHeight;
+            this.camera.updateProjectionMatrix();
+        }
+        
         if (this.renderer) {
             this.renderer.setSize(window.innerWidth, window.innerHeight);
         }
         
         if (this.labelRenderer) {
             this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
-        }
-        
-        if (this.multiplayerCamera) {
-            this.multiplayerCamera.onWindowResize?.();
         }
     }
 
@@ -340,7 +432,13 @@ export class MultiplayerGame {
      * Cleanup all multiplayer resources
      */
     cleanup() {
+        // Stop the game loop first
+        this.stop();
+        
         console.log('Cleaning up multiplayer game...');
+        
+        // Reset initialization flag
+        this.isInitializing = false;
         
         // Cleanup network
         if (this.networkManager) {
@@ -349,20 +447,41 @@ export class MultiplayerGame {
         }
         
         // Cleanup UI
-        if (this.multiplayerStatusUI) {
-            this.multiplayerStatusUI.destroy?.();
-            this.multiplayerStatusUI = null;
+        
+        if (this.mazeBuilderUI) {
+            this.mazeBuilderUI.cleanup?.();
+            this.mazeBuilderUI = null;
+        }
+        if (this.towerSelectionUI) {
+            this.towerSelectionUI.cleanup?.();
+            this.towerSelectionUI = null;
+        }
+        if (this.towerManagementUI) {
+            this.towerManagementUI.cleanup?.();
+            this.towerManagementUI = null;
         }
         
-        if (this.privateControlPanel) {
-            this.privateControlPanel.destroy?.();
-            this.privateControlPanel = null;
+        if (this.spectatorOverlay) {
+            this.spectatorOverlay.cleanup?.();
+            this.spectatorOverlay = null;
         }
         
         // Cleanup input
-        if (this.multiplayerInput) {
-            this.multiplayerInput.cleanup?.();
-            this.multiplayerInput = null;
+        if (this.mazeInputManager) {
+            this.mazeInputManager.cleanup?.();
+            this.mazeInputManager = null;
+        }
+        
+        // Cleanup controls
+        if (this.controls) {
+            this.controls.dispose();
+            this.controls = null;
+        }
+        
+        // Cleanup scene
+        if (this.multiplayerScene) {
+            this.multiplayerScene.dispose();
+            this.multiplayerScene = null;
         }
         
         // Cleanup rendering
@@ -385,6 +504,7 @@ export class MultiplayerGame {
         this.localPlayerId = null;
         this.isConnected = false;
         this.isInSession = false;
+        this.camera = null;
         
         console.log('Multiplayer game cleaned up');
     }
