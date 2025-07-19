@@ -543,9 +543,9 @@ export class MazeState {
         console.log('🔧 Created shape object:', shapeObj);
         console.log('🎨 Shape color:', shapeObj.color);
         
-        // Create visual blocks using the positions and color parameters
-        console.log('🎭 Creating visual blocks...');
-        this.createVisualBlocksFromPositions(worldPositions, shapeObj.color);
+        // FIXED: Use the same cohesive rendering as single player mode
+        console.log('🎭 Creating cohesive visual blocks with beveling...');
+        this.createVisualBlocks(shapeObj);
         
         // Update grid state using world coordinates directly
         console.log('🗺️ Updating grid state...');
@@ -578,55 +578,6 @@ export class MazeState {
         console.log('✅ Server placement applied successfully. Total shapes:', this.placedShapes.length);
         console.log('✅ Grid blocks in scene:', this.gridBlocks.length);
         console.log('🏁 applyServerPlacement completed');
-    }
-
-    // Helper method to create visual blocks from positions array (for server synchronization)
-    createVisualBlocksFromPositions(positions, color) {
-        console.log('🎭 createVisualBlocksFromPositions called');
-        console.log('📍 Positions:', positions);
-        console.log('🎨 Color:', color);
-        console.log('🏗️ Scene exists:', !!this.scene);
-        
-        const geometries = [];
-        
-        for (const pos of positions) {
-            console.log(`🧱 Creating block at position (${pos.x}, ${pos.z})`);
-            const blockGeometry = new THREE.BoxGeometry(0.9, 0.2, 0.9);
-            blockGeometry.translate(pos.x, 0.1, pos.z);
-            geometries.push(blockGeometry);
-        }
-        
-        console.log(`🔧 Created ${geometries.length} block geometries`);
-        
-        if (geometries.length > 0) {
-            const mergedGeometry = BufferGeometryUtils.mergeGeometries(geometries);
-            console.log('🔗 Merged geometries successfully');
-            
-            const blockMaterial = new THREE.MeshLambertMaterial({ 
-                color: color,
-                transparent: true,
-                opacity: 0.9
-            });
-            console.log('🎨 Created material with color:', color);
-            
-            const blockMesh = new THREE.Mesh(mergedGeometry, blockMaterial);
-            blockMesh.castShadow = true;
-            blockMesh.receiveShadow = true;
-            blockMesh.userData.isMazeBlock = true;
-            console.log('🔨 Created mesh:', blockMesh);
-            
-            this.scene.add(blockMesh);
-            this.gridBlocks.push(blockMesh);
-            
-            console.log('✅ Added mesh to scene. Scene children count:', this.scene.children.length);
-            console.log('✅ Added to gridBlocks. GridBlocks count:', this.gridBlocks.length);
-            console.log('🎯 Mesh position:', blockMesh.position);
-            console.log('🔍 Mesh visible:', blockMesh.visible);
-        } else {
-            console.log('❌ No geometries to create mesh from');
-        }
-        
-        console.log('🏁 createVisualBlocksFromPositions completed');
     }
 
     // Clean up maze builder
