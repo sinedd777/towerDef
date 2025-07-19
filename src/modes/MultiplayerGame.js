@@ -736,6 +736,20 @@ export class MultiplayerGame {
             // Apply the placement locally
             this.mazeState.applyServerPlacement(data.mazePiece.positions, shapeData);
             
+            // CRITICAL FIX: Advance the shape hand like single player mode does
+            if (this.mazeState.selectedShape) {
+                // Remove the placed shape from hand
+                const handIndex = this.mazeState.currentShapeHand.indexOf(this.mazeState.selectedShape);
+                if (handIndex !== -1) {
+                    this.mazeState.currentShapeHand.splice(handIndex, 1);
+                    console.log('Removed shape from hand. New hand size:', this.mazeState.currentShapeHand.length);
+                }
+                
+                // Clear selection and preview
+                this.mazeState.selectedShape = null;
+                this.mazeState.clearPreview();
+            }
+            
             // Update UI
             if (this.mazeBuilderUI) {
                 this.mazeBuilderUI.onShapePlaced();

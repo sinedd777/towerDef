@@ -18,7 +18,7 @@ class CooperativeGameState {
         this.gamePhase = 'building'; // building, defense, ended
         this.currentTurn = 'player1'; // whose turn it is
         this.shapesPlaced = {
-            player1: 0, // max 10 per player
+            player1: 0, // max 3 per player
             player2: 0
         };
         
@@ -76,7 +76,7 @@ class CooperativeGameState {
             playerId,
             name: playerData.name || playerId,
             ready: false,
-            shapesRemaining: 10,
+            shapesRemaining: 3,
             connected: true,
             joinedAt: Date.now(),
             ...playerData
@@ -121,7 +121,7 @@ class CooperativeGameState {
         }
         
         // Validate player has shapes remaining
-        if (this.shapesPlaced[playerId] >= 10) {
+        if (this.shapesPlaced[playerId] >= 3) {
             return { success: false, reason: 'max_shapes_reached' };
         }
         
@@ -155,11 +155,11 @@ class CooperativeGameState {
         
         // Check if we should transition to defense phase
         const totalShapes = this.shapesPlaced.player1 + this.shapesPlaced.player2;
-        if (totalShapes >= 20) {
+        if (totalShapes >= 6) {
             this.startDefensePhase();
         }
         
-        return { success: true, mazePiece, totalShapes, remainingShapes: 20 - totalShapes };
+        return { success: true, mazePiece, totalShapes, remainingShapes: 6 - totalShapes };
     }
     
     validateMazePlacement(mazeData) {

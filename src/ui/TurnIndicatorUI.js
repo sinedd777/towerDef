@@ -78,8 +78,8 @@ export class TurnIndicatorUI {
         // Update progress display
         if (gamePhase === 'building' && shapesPlaced) {
             const totalShapes = shapesPlaced.player1 + shapesPlaced.player2;
-            const remaining = 20 - totalShapes;
-            this.progressDisplay.textContent = `Shapes: ${totalShapes}/20 (${remaining} remaining)`;
+            const remaining = 6 - totalShapes;
+            this.progressDisplay.textContent = `Shapes: ${totalShapes}/6 (${remaining} remaining)`;
         } else if (gamePhase === 'defense' && sharedResources) {
             this.progressDisplay.textContent = `Health: ${sharedResources.health} | Money: $${sharedResources.money} | Score: ${sharedResources.score}`;
         }

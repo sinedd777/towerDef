@@ -35,8 +35,8 @@ export class MazeState {
             this.gridState[z] = {};
         }
         
-        // Generate initial hand of shapes (increased to 10)
-        this.currentShapeHand = generateShapeHand(10);
+        // Generate initial hand of shapes (reduced to 3)
+        this.currentShapeHand = generateShapeHand(3);
         
         // Mark path areas as restricted
         this.markPathAreas();
