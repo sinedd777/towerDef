@@ -112,6 +112,7 @@ class GameEventHandler {
                 if (session && session.gameMode === 'cooperative') {
                     // Get player ID for this socket
                     const playerId = socket.playerId;
+                    console.log('🎯 Broadcasting maze placement for playerId:', playerId, 'socket:', socket.id);
                     
                     // Broadcast maze placement to ALL players in session
                     this.sessionHandler.io.to(session.sessionId).emit('maze:piece_placed', {

@@ -58,8 +58,9 @@ class SessionHandler {
                 this.playerSessions.set(socket.id, session.sessionId);
                 socket.join(session.sessionId);
                 
-                // Set socket.playerId for use in GameEventHandler
+                // FIXED: Set socket.playerId for use in GameEventHandler
                 socket.playerId = result.player.playerId;
+                console.log('🎯 Set socket.playerId to:', socket.playerId, 'for socket:', socket.id, '(session creator)');
                 
                 socket.emit('session:created', {
                     sessionId: session.sessionId,
@@ -67,9 +68,9 @@ class SessionHandler {
                     sessionInfo: session.getSessionInfo()
                 });
                 
-                this.logger.info(`Session created: ${session.sessionId}`);
+                this.logger.info(`Session created: ${session.sessionId} by ${socket.id}`);
             } else {
-                socket.emit('session:error', { error: result.error });
+                socket.emit('session:error', { message: 'Failed to create session' });
             }
         } catch (error) {
             this.logger.error('Error creating session:', error);
@@ -104,6 +105,7 @@ class SessionHandler {
                 
                 // FIXED: Set socket.playerId for use in GameEventHandler
                 socket.playerId = result.player.playerId;
+                console.log('🎯 Set socket.playerId to:', socket.playerId, 'for socket:', socket.id);
                 
                 // Auto-ready players in cooperative games
                 if (session.gameMode === 'cooperative') {

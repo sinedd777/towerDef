@@ -234,8 +234,14 @@ export class MultiplayerGame {
 
         // Session handlers
         this.networkManager.setOnSessionJoined((data) => {
+            console.log('*** SESSION JOINED EVENT FIRED ***', Date.now());
+            console.log('Joined multiplayer session:', data);
+            
+            // Store local player ID - FIXED: read from data.player.playerId
             this.localPlayerId = data.player.playerId;
             this.isInSession = true;
+            
+            console.log('🎯 Set localPlayerId to:', this.localPlayerId);
             
             // Call external callback to hide game mode selector
             if (this.onSessionJoined) {
@@ -753,11 +759,31 @@ export class MultiplayerGame {
      * Handle other players' maze placements for state synchronization
      */
     handleOtherPlayerMazePlacement(data) {
-            // Only apply if it's NOT our own placement (to avoid double-application)
-            if (data.playerId !== this.localPlayerId && this.mazeState && data.mazePiece) {
-                this.mazeState.applyServerPlacement(data.mazePiece.positions, data.shapeData);
-            }
+        console.log('🔥 handleOtherPlayerMazePlacement called with data:', data);
+        console.log('🎯 Local player ID:', this.localPlayerId);
+        console.log('🎯 Data player ID:', data.playerId);
+        console.log('🎯 MazeState exists:', !!this.mazeState);
+        console.log('🎯 MazePiece exists:', !!data.mazePiece);
+        console.log('🎯 ShapeData exists:', !!data.shapeData);
+        
+        // Only apply if it's NOT our own placement (to avoid double-application)
+        if (data.playerId !== this.localPlayerId && this.mazeState && data.mazePiece) {
+            console.log('✅ Applying other player maze placement...');
+            console.log('📍 Positions:', data.mazePiece.positions);
+            console.log('🎨 Shape data:', data.shapeData);
+            
+            // Apply the other player's placement to our local maze state
+            this.mazeState.applyServerPlacement(data.mazePiece.positions, data.shapeData);
+            
+            console.log('✅ Other player maze placement applied successfully');
+        } else {
+            console.log('❌ Skipping maze placement:', {
+                isOwnPlacement: data.playerId === this.localPlayerId,
+                hasMazeState: !!this.mazeState,
+                hasMazePiece: !!data.mazePiece
+            });
         }
+    }
 
     /**
      * Get color for different message types

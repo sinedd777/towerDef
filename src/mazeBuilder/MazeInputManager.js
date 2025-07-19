@@ -220,8 +220,6 @@ export class MazeInputManager {
             gridZ: Math.round(z)
         };
 
-        console.log('Sending maze placement to server:', shapeData);
-        
         // Send to server via network manager
         this.networkManager.placeMaze(shapeData.gridX, shapeData.gridZ, shapeData);
     }

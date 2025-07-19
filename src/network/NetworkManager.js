@@ -61,11 +61,9 @@ export class NetworkManager {
     // Connect to the multiplayer server
     connect(serverUrl = 'http://localhost:4000') {
         if (this.isConnected) {
-            console.log('Already connected to server');
             return;
         }
 
-        console.log('Connecting to multiplayer server:', serverUrl);
         
         this.socket = io(serverUrl, {
             transports: ['websocket', 'polling'],
@@ -92,14 +90,12 @@ export class NetworkManager {
     setupEventListeners() {
         // Connection events
         this.socket.on('connect', () => {
-            console.log('Connected to multiplayer server');
             this.isConnected = true;
             this.reconnectAttempts = 0;
             if (this.onConnected) this.onConnected();
         });
         
         this.socket.on('player:connected', (data) => {
-            console.log('Player connected to server:', data);
             this.playerId = data.playerId;
             
             // Set a custom player name if we have one
@@ -109,7 +105,6 @@ export class NetworkManager {
         });
         
         this.socket.on('player:profile_updated', (data) => {
-            console.log('Player profile updated:', data);
             this.playerName = data.name;
         });
         
@@ -119,7 +114,6 @@ export class NetworkManager {
         });
         
         this.socket.on('disconnect', (reason) => {
-            console.log('Disconnected from server:', reason);
             this.isConnected = false;
             if (this.onDisconnected) this.onDisconnected(reason);
             
@@ -137,7 +131,6 @@ export class NetworkManager {
         
         // Game session events
         this.socket.on('session:created', (data) => {
-            console.log('Session created:', data);
             this.sessionId = data.sessionId;
             this.playerId = data.player.id;
             this.isHost = true;
@@ -145,7 +138,6 @@ export class NetworkManager {
         });
         
         this.socket.on('session:joined', (data) => {
-            console.log('Session joined:', data);
             this.sessionId = data.sessionId;
             this.playerId = data.player.id;
             this.isHost = false;
@@ -153,7 +145,6 @@ export class NetworkManager {
         });
         
         this.socket.on('session:joined_as_spectator', (data) => {
-            console.log('Joined as spectator:', data);
             this.sessionId = data.sessionId;
             this.playerId = null; // Spectators don't have a player ID
             this.isHost = false;
@@ -167,12 +158,10 @@ export class NetworkManager {
         });
         
         this.socket.on('player:joined', (data) => {
-            console.log('Player joined:', data);
             if (this.onPlayerJoined) this.onPlayerJoined(data);
         });
         
-        this.socket.on('player:left', (data) => {
-            console.log('Player left:', data);
+        this.socket.on('player:left', (data) => {   
             if (this.onPlayerLeft) this.onPlayerLeft(data);
         });
         
@@ -208,7 +197,6 @@ export class NetworkManager {
             
             // Don't treat queued status as an error
             if (error.message === 'queued') {
-                console.log('Added to matchmaking queue');
                 if (this.onMatchmakingUpdate) {
                     this.onMatchmakingUpdate({
                         status: 'queued',
@@ -225,7 +213,6 @@ export class NetworkManager {
         });
 
         this.socket.on('matchmaking:queued', (data) => {
-            console.log('Added to matchmaking queue:', data);
             this.isInMatchmaking = true;
             if (this.onMatchmakingUpdate) {
                 this.onMatchmakingUpdate({
@@ -236,7 +223,6 @@ export class NetworkManager {
         });
 
         this.socket.on('matchmaking:matched', (data) => {
-            console.log('Match found:', data);
             this.isInMatchmaking = false;
             
             // Trigger the match found callback for UI updates
@@ -260,7 +246,6 @@ export class NetworkManager {
             const sessionId = data.sessionId;
             
             if (sessionId) {
-                console.log('Matched to session:', sessionId, '(already joined by server)');
                 // Don't call joinSession() - server already added us during matchmaking
                 this.sessionId = sessionId;
             } else {
@@ -272,7 +257,6 @@ export class NetworkManager {
         });
 
         this.socket.on('matchmaking:timeout', (data) => {
-            console.log('Matchmaking timeout:', data);
             this.isInMatchmaking = false;
             if (this.onMatchmakingUpdate) {
                 this.onMatchmakingUpdate({
@@ -283,7 +267,6 @@ export class NetworkManager {
         });
 
         this.socket.on('matchmaking:cancelled', () => {
-            console.log('Matchmaking cancelled');
             this.isInMatchmaking = false;
             if (this.onMatchmakingUpdate) {
                 this.onMatchmakingUpdate({
@@ -294,14 +277,12 @@ export class NetworkManager {
 
         // Maze placement events for cooperative mode
         this.socket.on('maze:placed', (data) => {
-            console.log('Maze placed event:', data);
             if (this.onMazePlaced) {
                 this.onMazePlaced(data);
             }
         });
 
         this.socket.on('maze:place_failed', (data) => {
-            console.log('Maze place failed event:', data);
             if (this.onMazePlaceFailed) {
                 this.onMazePlaceFailed(data);
             }
@@ -309,7 +290,6 @@ export class NetworkManager {
 
         // Cooperative mode: Other players' maze placements
         this.socket.on('maze:piece_placed', (data) => {
-            console.log('Maze piece placed by another player:', data);
             if (this.onMazePiecePlaced) {
                 this.onMazePiecePlaced(data);
             }
@@ -323,7 +303,6 @@ export class NetworkManager {
             return;
         }
         
-        console.log('Creating multiplayer session...');
         this.socket.emit('session:create');
     }
     
@@ -336,8 +315,6 @@ export class NetworkManager {
         
         // Use stored player name or generate default
         const finalPlayerName = playerName || this.playerName || `Player_${this.socket.id.slice(0, 6)}`;
-        
-        console.log('Joining session:', sessionId, 'as player:', finalPlayerName);
         this.socket.emit('session:join', { 
             sessionId,
             playerName: finalPlayerName
@@ -348,7 +325,6 @@ export class NetworkManager {
     leaveSession() {
         if (!this.isConnected || !this.sessionId) return;
         
-        console.log('Leaving session:', this.sessionId);
         this.socket.emit('session:leave');
         this.sessionId = null;
         this.playerId = null;
@@ -423,7 +399,6 @@ export class NetworkManager {
             return;
         }
 
-        console.log('Requesting defense phase start');
         this.socket.emit('game:start_defense', {
             sessionId: this.sessionId,
             playerId: this.playerId,
@@ -435,7 +410,6 @@ export class NetworkManager {
         if (!this.socket) return;
 
         this.socket.on('game:defense_started', (data) => {
-            console.log('Defense phase started:', data);
             if (callback) callback(data);
         });
     }
@@ -444,7 +418,6 @@ export class NetworkManager {
         if (!this.socket) return;
 
         this.socket.on('game:enemy_spawned', (data) => {
-            console.log('Enemy spawned:', data);
             if (callback) callback(data);
         });
     }
@@ -455,7 +428,6 @@ export class NetworkManager {
         if (!this.socket) return;
 
         this.socket.on('game:state_update', (data) => {
-            console.log('Cooperative game state update:', data);
             if (this.onTurnChanged && data.currentTurn) {
                 this.onTurnChanged({
                     currentTurn: data.currentTurn,
@@ -476,7 +448,6 @@ export class NetworkManager {
         if (!this.socket) return;
 
         this.socket.on('game:defense_started', (data) => {
-            console.log('Cooperative defense started:', data);
             if (this.onDefenseStarted) {
                 this.onDefenseStarted(data);
             }
@@ -488,7 +459,6 @@ export class NetworkManager {
         if (!this.socket) return;
 
         this.socket.on('game:message', (data) => {
-            console.log('Game message:', data);
             if (this.onGameMessage) {
                 this.onGameMessage(data);
             }
@@ -519,7 +489,6 @@ export class NetworkManager {
             return;
         }
 
-        console.log('Emitting matchmaking:quick_match event');
         this.socket.emit('matchmaking:quick_match', {
             rating: 1000, // Default rating for now
             playerName: this.playerName || `Player_${this.socket.id.slice(0, 6)}`
@@ -533,7 +502,6 @@ export class NetworkManager {
             return;
         }
 
-        console.log('Emitting matchmaking:cancel event');
         this.socket.emit('matchmaking:cancel');
         this.isInMatchmaking = false;
     }
@@ -586,8 +554,6 @@ export class NetworkManager {
         }
         
         this.reconnectAttempts++;
-        console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-        
         setTimeout(() => {
             if (!this.isConnected) {
                 this.connect();
@@ -762,7 +728,6 @@ export class NetworkManager {
         // Receive wave data from server
         this.socket.on('wave_data', (data) => {
             this.waveData = data;
-            console.log('Received wave data:', data);
         });
 
         // Wave start signal
@@ -772,7 +737,6 @@ export class NetworkManager {
             
             // Notify game to start spawning
             this.onWaveStart?.(data);
-            console.log('Wave started:', data.waveNumber);
         });
 
         // Wave end signal

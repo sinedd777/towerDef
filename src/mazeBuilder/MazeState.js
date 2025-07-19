@@ -395,12 +395,16 @@ export class MazeState {
         }
         
         this.isPlacing = true; // Lock placement
+        console.log('Starting placement for shape:', this.selectedShape.name);
         
         // Snap to grid cell centers by adding 0.5
         const gridX = Math.floor(worldX) + 0.5;
         const gridZ = Math.floor(worldZ) + 0.5;
         
+        console.log('Attempting to place at grid position:', gridX, gridZ);
+        
         if (!this.selectedShape.canPlaceAt(gridX, gridZ, this.gridState, this.gridSize)) {
+            console.log('Cannot place shape at this position');
             this.isPlacing = false; // Unlock
             return false;
         }
@@ -408,6 +412,8 @@ export class MazeState {
         // Place the shape
         this.selectedShape.position = { x: gridX, z: gridZ };
         this.selectedShape.placeInGrid(this.gridState, this.gridSize);
+        
+        console.log('Shape placed in grid state');
         
         // Create visual blocks
         this.createVisualBlocks(this.selectedShape);
@@ -420,11 +426,13 @@ export class MazeState {
         const handIndex = this.currentShapeHand.indexOf(this.selectedShape);
         if (handIndex !== -1) {
             this.currentShapeHand.splice(handIndex, 1);
+            console.log('Removed shape from hand. New hand size:', this.currentShapeHand.length);
         }
 
         // Check if path is still valid
         const validPath = this.validatePath();
         if (!validPath) {
+            console.log('Path blocked, undoing placement');
             // Show alert
             alert('This placement blocks all paths to the end! Click OK to undo and try again.');
             // Undo the placement
@@ -437,12 +445,18 @@ export class MazeState {
         this.selectedShape = null;
         this.clearPreview();
         
+        console.log('Placement completed successfully');
         this.isPlacing = false; // Unlock
         
         return true;
     }
 
     createVisualBlocks(shape) {
+        console.log('Creating visual blocks for shape:', shape.name);
+        console.log('Shape position:', shape.position);
+        console.log('Shape cells:', shape.cells);
+        console.log('World cells:', shape.getWorldCells());
+        
         // Create a cohesive merged geometry for the placed shape
         const mergedGeometry = this.createCohesiveShapeGeometry(shape, 0.5, 1.0);
         
@@ -466,6 +480,8 @@ export class MazeState {
         
         // Store reference to the shape for easier management
         shapeMesh.userData.shape = shape;
+        
+        console.log('Mesh final position:', shapeMesh.position);
         
         this.scene.add(shapeMesh);
         this.gridBlocks.push(shapeMesh);
@@ -501,25 +517,44 @@ export class MazeState {
 
     // Apply placement received from server (for multiplayer synchronization)
     applyServerPlacement(positions, shapeData) {
+        console.log('🚀 applyServerPlacement called');
+        console.log('📍 Positions received:', positions);
+        console.log('🎨 Shape data received:', shapeData);
+        
         // Server positions are already in correct world coordinates, use them directly
         const worldPositions = positions.map(pos => ({ x: pos.x, z: pos.z }));
+        console.log('🌍 World positions:', worldPositions);
         
         // Create a shape object that matches what createVisualBlocks expects
         const shapeObj = {
             name: shapeData.name || shapeData.shape,
             color: shapeData.color || 0xff0000,
             position: worldPositions[0], // Use first position as the base position
-            cells: worldPositions.map(pos => [pos.x, pos.z])
+            cells: worldPositions.map((pos, index) => [
+                pos.x - worldPositions[0].x, 
+                pos.z - worldPositions[0].z
+            ]), // Calculate relative positions from first cell
+            getWorldCells: function() {
+                return worldPositions;
+            },
+            placed: true
         };
         
+        console.log('🔧 Created shape object:', shapeObj);
+        console.log('🎨 Shape color:', shapeObj.color);
+        
         // Create visual blocks using the positions and color parameters
+        console.log('🎭 Creating visual blocks...');
         this.createVisualBlocksFromPositions(worldPositions, shapeObj.color);
         
         // Update grid state using world coordinates directly
+        console.log('🗺️ Updating grid state...');
         worldPositions.forEach(pos => {
             // Convert world coordinates to grid indices (0-based)
             const gridX = Math.floor(pos.x + this.gridSize / 2);
             const gridZ = Math.floor(pos.z + this.gridSize / 2);
+            
+            console.log(`📐 Grid conversion: World(${pos.x}, ${pos.z}) -> Grid(${gridX}, ${gridZ})`);
             
             // Ensure coordinates are within grid bounds
             if (gridX >= 0 && gridX < this.gridSize && gridZ >= 0 && gridZ < this.gridSize) {
@@ -528,31 +563,70 @@ export class MazeState {
                 }
                 this.gridState[gridZ][gridX] = {
                     occupied: true,
-                    shape: shapeObj.name,
+                    shape: shapeObj,
                     color: shapeObj.color
                 };
+                console.log(`✅ Grid state updated at (${gridX}, ${gridZ})`);
+            } else {
+                console.log(`❌ Grid position out of bounds: (${gridX}, ${gridZ})`);
             }
         });
+        
+        // Add to placed shapes for tracking
+        this.placedShapes.push(shapeObj);
+        
+        console.log('✅ Server placement applied successfully. Total shapes:', this.placedShapes.length);
+        console.log('✅ Grid blocks in scene:', this.gridBlocks.length);
+        console.log('🏁 applyServerPlacement completed');
     }
 
     // Helper method to create visual blocks from positions array (for server synchronization)
     createVisualBlocksFromPositions(positions, color) {
+        console.log('🎭 createVisualBlocksFromPositions called');
+        console.log('📍 Positions:', positions);
+        console.log('🎨 Color:', color);
+        console.log('🏗️ Scene exists:', !!this.scene);
+        
         const geometries = [];
         
         for (const pos of positions) {
+            console.log(`🧱 Creating block at position (${pos.x}, ${pos.z})`);
             const blockGeometry = new THREE.BoxGeometry(0.9, 0.2, 0.9);
             blockGeometry.translate(pos.x, 0.1, pos.z);
             geometries.push(blockGeometry);
         }
         
+        console.log(`🔧 Created ${geometries.length} block geometries`);
+        
         if (geometries.length > 0) {
             const mergedGeometry = BufferGeometryUtils.mergeGeometries(geometries);
-            const material = new THREE.MeshPhongMaterial({ color: color });
-            const blockMesh = new THREE.Mesh(mergedGeometry, material);
+            console.log('🔗 Merged geometries successfully');
+            
+            const blockMaterial = new THREE.MeshLambertMaterial({ 
+                color: color,
+                transparent: true,
+                opacity: 0.9
+            });
+            console.log('🎨 Created material with color:', color);
+            
+            const blockMesh = new THREE.Mesh(mergedGeometry, blockMaterial);
+            blockMesh.castShadow = true;
+            blockMesh.receiveShadow = true;
+            blockMesh.userData.isMazeBlock = true;
+            console.log('🔨 Created mesh:', blockMesh);
             
             this.scene.add(blockMesh);
             this.gridBlocks.push(blockMesh);
+            
+            console.log('✅ Added mesh to scene. Scene children count:', this.scene.children.length);
+            console.log('✅ Added to gridBlocks. GridBlocks count:', this.gridBlocks.length);
+            console.log('🎯 Mesh position:', blockMesh.position);
+            console.log('🔍 Mesh visible:', blockMesh.visible);
+        } else {
+            console.log('❌ No geometries to create mesh from');
         }
+        
+        console.log('🏁 createVisualBlocksFromPositions completed');
     }
 
     // Clean up maze builder

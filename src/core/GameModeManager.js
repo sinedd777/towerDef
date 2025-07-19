@@ -294,6 +294,6 @@ export class GameModeManager {
         }
         
         this.isInitialized = false;
-        console.log('GameModeManager destroyed');
+        
     }
 } 
