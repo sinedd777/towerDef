@@ -130,7 +130,19 @@ export class GameState {
         if (this.scoreElement) this.scoreElement.textContent = this.score;
         if (this.waveElement) this.waveElement.textContent = this.wave;
         if (this.enemiesElement) this.enemiesElement.textContent = this.enemiesCount;
-        if (this.healthElement) this.healthElement.textContent = this.health;
+        
+        if (this.healthElement) {
+            this.healthElement.textContent = this.health;
+            
+            // Apply visual feedback for health status
+            this.healthElement.classList.remove('low-health', 'critical-health');
+            
+            if (this.health <= 15) {
+                this.healthElement.classList.add('critical-health');
+            } else if (this.health <= 30) {
+                this.healthElement.classList.add('low-health');
+            }
+        }
         
         // Update phase indicator if it exists
         const phaseElement = document.getElementById('phase');

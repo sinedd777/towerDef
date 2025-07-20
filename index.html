@@ -3,8 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Three.js Tower Defense</title>
+    <title>Tower Defense Command</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --primary-blue: #00d4ff;
+            --secondary-blue: #0099cc;
+            --accent-cyan: #00ffff;
+            --dark-bg: #0a0f1c;
+            --darker-bg: #050810;
+            --surface: rgba(15, 25, 45, 0.9);
+            --surface-light: rgba(25, 35, 55, 0.8);
+            --border-glow: rgba(0, 212, 255, 0.3);
+            --text-primary: #ffffff;
+            --text-secondary: #b8c5d1;
+            --text-accent: #00d4ff;
+            --success-green: #00ff88;
+            --warning-orange: #ff8800;
+            --danger-red: #ff4444;
+            --gold: #ffd700;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -13,8 +34,46 @@
         
         body {
             overflow: hidden;
-            background: #000;
-            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, var(--dark-bg) 0%, var(--darker-bg) 100%);
+            font-family: 'Exo 2', sans-serif;
+            position: relative;
+        }
+
+        /* Animated background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 20%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(0, 255, 255, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 40% 60%, rgba(0, 153, 204, 0.08) 0%, transparent 50%);
+            animation: backgroundShift 20s ease-in-out infinite;
+            z-index: 0;
+        }
+
+        @keyframes backgroundShift {
+            0%, 100% { transform: translateX(0) translateY(0) scale(1); }
+            33% { transform: translateX(-10px) translateY(-10px) scale(1.02); }
+            66% { transform: translateX(10px) translateY(10px) scale(0.98); }
+        }
+
+        /* Grid overlay effect */
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            z-index: 0;
         }
         
         canvas {
@@ -29,76 +88,265 @@
         
         #hud {
             position: absolute;
-            top: 20px;
-            left: 20px;
-            color: white;
-            font-size: 18px;
+            top: 25px;
+            left: 25px;
             z-index: 2;
-            text-shadow: 2px 2px 2px rgba(0,0,0,0.5);
+            font-family: 'Orbitron', monospace;
+            font-weight: 700;
         }
 
-        /* Tower Menu Styles */
+        .hud-container {
+            background: linear-gradient(135deg, var(--surface) 0%, rgba(10, 20, 35, 0.95) 100%);
+            border: 2px solid var(--border-glow);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hud-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.1), transparent);
+            animation: scanLine 3s ease-in-out infinite;
+        }
+
+        @keyframes scanLine {
+            0% { left: -100%; }
+            50% { left: 100%; }
+            100% { left: -100%; }
+        }
+
+        .hud-stat {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            font-size: 16px;
+            color: var(--text-secondary);
+            position: relative;
+        }
+
+        .hud-stat:last-child {
+            margin-bottom: 0;
+        }
+
+        .hud-label {
+            min-width: 80px;
+            font-weight: 600;
+            color: var(--text-accent);
+            text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+        }
+
+        .hud-value {
+            color: var(--text-primary);
+            font-weight: 900;
+            font-size: 18px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+            margin-left: auto;
+        }
+
+        .hud-value.money {
+            color: var(--gold);
+            text-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
+        }
+
+        .hud-value.score {
+            color: var(--success-green);
+            text-shadow: 0 0 15px rgba(0, 255, 136, 0.4);
+        }
+
+        .hud-value.health {
+            color: #4CAF50;
+            text-shadow: 0 0 15px rgba(76, 175, 80, 0.6);
+        }
+
+        .hud-value.health.low-health {
+            color: #ff4444;
+            text-shadow: 0 0 15px rgba(255, 68, 68, 0.8);
+            animation: healthPulse 1s infinite;
+        }
+
+        .hud-value.health.critical-health {
+            color: #ff1744;
+            text-shadow: 0 0 20px rgba(255, 23, 68, 1);
+            animation: healthPulse 0.5s infinite;
+        }
+
+        @keyframes healthPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .hud-value.enemies {
+            color: var(--danger-red);
+            text-shadow: 0 0 15px rgba(255, 68, 68, 0.4);
+        }
+
+        /* Tower Menu Styles - Bottom Center Compact Layout */
         .tower-menu {
             position: fixed;
             bottom: 20px;
-            right: 20px;
+            left: 50%;
+            transform: translateX(-50%);
             z-index: 2;
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
             gap: 8px;
-            padding: 10px;
-            background: rgba(0, 0, 0, 0.7);
-            border-radius: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 10px 15px;
+            background: linear-gradient(135deg, var(--surface) 0%, rgba(10, 20, 35, 0.95) 100%);
+            border: 2px solid var(--border-glow);
+            border-radius: 15px;
+            backdrop-filter: blur(15px);
+            box-shadow: 
+                0 8px 25px rgba(0, 0, 0, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+            min-width: fit-content;
+            width: auto;
+            align-items: center;
+        }
+
+        .tower-menu::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: linear-gradient(45deg, var(--primary-blue), var(--accent-cyan), var(--primary-blue));
+            border-radius: 20px;
+            z-index: -1;
+            animation: borderGlow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes borderGlow {
+            from { opacity: 0.5; }
+            to { opacity: 1; }
         }
 
         .tower-slot {
-            width: 60px;
-            height: 60px;
-            background: rgba(40, 40, 40, 0.8);
-            border: 2px solid rgba(255, 255, 255, 0.2);
-            border-radius: 8px;
+            width: 55px;
+            height: 55px;
+            background: linear-gradient(135deg, rgba(25, 35, 55, 0.9) 0%, rgba(15, 25, 45, 0.9) 100%);
+            border: 2px solid rgba(0, 212, 255, 0.3);
+            border-radius: 10px;
             cursor: pointer;
             position: relative;
-            transition: all 0.2s ease;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             display: flex;
             align-items: center;
             justify-content: center;
+            overflow: hidden;
+        }
+
+        .tower-slot::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(0, 255, 255, 0.05) 100%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
         }
 
         .tower-slot:hover {
-            border-color: rgba(255, 255, 255, 0.5);
-            transform: translateY(-2px);
+            border-color: var(--accent-cyan);
+            transform: translateY(-4px) scale(1.05);
+            box-shadow: 
+                0 10px 25px rgba(0, 0, 0, 0.3),
+                0 0 20px rgba(0, 212, 255, 0.4);
+        }
+
+        .tower-slot:hover::before {
+            opacity: 1;
         }
 
         .tower-slot.selected {
-            border-color: #ffdd44;
-            box-shadow: 0 0 10px rgba(255, 221, 68, 0.5);
-            transform: translateY(-2px);
+            border-color: var(--gold);
+            box-shadow: 
+                0 8px 30px rgba(0, 0, 0, 0.4),
+                0 0 25px rgba(255, 215, 0, 0.6),
+                inset 0 0 20px rgba(255, 215, 0, 0.1);
+            transform: translateY(-4px) scale(1.08);
+        }
+
+        .tower-slot.selected::before {
+            background: linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 215, 0, 0.08) 100%);
+            opacity: 1;
         }
 
         .tower-slot.cannot-afford {
-            opacity: 0.5;
+            opacity: 0.4;
             cursor: not-allowed;
-            filter: grayscale(1);
+            filter: grayscale(0.8) brightness(0.6);
+            transform: none !important;
+            box-shadow: none !important;
         }
 
+        /* Tower Icon Styling - Works with dynamically set background colors */
         .tower-icon {
-            width: 40px;
-            height: 40px;
+            width: 36px;
+            height: 36px;
             position: relative;
+            z-index: 1;
+            border-radius: 6px;
+            border: 2px solid rgba(0, 212, 255, 0.3);
+            transition: all 0.3s ease;
+            box-shadow: 
+                0 3px 6px rgba(0, 0, 0, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        .tower-slot:hover .tower-icon {
+            border-color: var(--accent-cyan);
+            box-shadow: 
+                0 6px 12px rgba(0, 0, 0, 0.4),
+                inset 0 0 15px rgba(0, 212, 255, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .tower-slot.selected .tower-icon {
+            border-color: var(--gold);
+            box-shadow: 
+                0 8px 16px rgba(0, 0, 0, 0.5),
+                inset 0 0 20px rgba(255, 215, 0, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+
+        .tower-slot.cannot-afford .tower-icon {
+            opacity: 0.4;
+            filter: grayscale(0.8);
+            cursor: not-allowed;
         }
 
         .tower-cost {
             position: absolute;
-            bottom: -5px;
-            right: -5px;
-            background: rgba(0, 0, 0, 0.8);
-            color: gold;
+            bottom: -4px;
+            right: -4px;
+            background: linear-gradient(135deg, rgba(0, 0, 0, 0.95) 0%, rgba(20, 20, 20, 0.95) 100%);
+            color: var(--gold);
             padding: 2px 4px;
             border-radius: 4px;
-            font-size: 12px;
-            border: 1px solid rgba(255, 215, 0, 0.3);
+            font-size: 9px;
+            font-weight: 700;
+            border: 1px solid rgba(255, 215, 0, 0.4);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+            z-index: 2;
+            font-family: 'Orbitron', monospace;
+            text-shadow: 0 0 6px rgba(255, 215, 0, 0.6);
         }
 
         .tower-tooltip {
@@ -106,61 +354,184 @@
             bottom: 100%;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.9);
-            color: white;
-            padding: 8px;
-            border-radius: 4px;
+            background: linear-gradient(135deg, rgba(5, 8, 16, 0.98) 0%, rgba(10, 15, 25, 0.98) 100%);
+            color: var(--text-primary);
+            padding: 15px;
+            border-radius: 12px;
             font-size: 12px;
-            width: 200px;
+            width: 220px;
             opacity: 0;
             visibility: hidden;
-            transition: all 0.2s ease;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             pointer-events: none;
-            margin-bottom: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 15px;
+            border: 2px solid var(--border-glow);
+            box-shadow: 
+                0 15px 35px rgba(0, 0, 0, 0.5),
+                0 0 20px rgba(0, 212, 255, 0.2);
+            backdrop-filter: blur(10px);
+            z-index: 10;
         }
 
         .tower-slot:hover .tower-tooltip {
             opacity: 1;
             visibility: visible;
+            transform: translateX(-50%) translateY(-5px);
         }
 
         .tower-tooltip-header {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 4px;
-            padding-bottom: 4px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            align-items: center;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(0, 212, 255, 0.3);
         }
 
         .tower-tooltip-name {
+            font-weight: 700;
+            color: var(--text-accent);
+            font-family: 'Orbitron', monospace;
+            text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+        }
+
+        .tower-tooltip-cost {
+            color: var(--gold);
+            font-weight: 700;
+            font-family: 'Orbitron', monospace;
+        }
+
+        .tower-tooltip-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+            margin: 8px 0;
+            font-size: 11px;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            color: var(--text-secondary);
+        }
+
+        .stat-value {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .tower-tooltip-description {
+            margin-top: 8px;
+            color: var(--text-secondary);
+            font-style: italic;
+            line-height: 1.4;
+            font-size: 11px;
+        }
+
+        /* Additional tooltip styles for dynamically created content */
+        .tower-tooltip-header {
             font-weight: bold;
-            color: #fff;
+            margin-bottom: 4px;
+        }
+
+        .tower-tooltip-name {
+            color: var(--gold);
+            font-family: 'Orbitron', monospace;
+            text-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
         }
 
         .tower-tooltip-stats {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 4px;
-            margin-top: 4px;
             font-size: 11px;
-            color: #aaa;
+            margin-top: 6px;
         }
 
-        .tower-tooltip-description {
-            margin: 4px 0;
-            color: #ccc;
-            font-style: italic;
+        /* Responsive design */
+        @media (max-width: 768px) {
+            #hud {
+                top: 15px;
+                left: 15px;
+            }
+
+            .hud-container {
+                padding: 15px;
+                font-size: 14px;
+            }
+
+            .tower-menu {
+                bottom: 15px;
+                padding: 8px 12px;
+                gap: 6px;
+            }
+
+            .tower-slot {
+                width: 45px;
+                height: 45px;
+            }
+
+            .tower-icon {
+                width: 28px;
+                height: 28px;
+            }
+
+            .tower-tooltip {
+                width: 200px;
+                font-size: 11px;
+            }
+        }
+
+        /* Loading animation for dynamic content */
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .loading {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        /* Accessibility improvements */
+        .tower-slot:focus {
+            outline: 2px solid var(--accent-cyan);
+            outline-offset: 2px;
+        }
+
+        .tower-slot:focus:not(:focus-visible) {
+            outline: none;
         }
     </style>
 </head>
 <body>
     <div id="hud">
-        <div>Phase: <span id="phase">Build Maze</span></div>
-        <div>Money: $<span id="money">100</span></div>
-        <div>Wave: <span id="wave">1</span></div>
-        <div>Enemies: <span id="enemies">0</span></div>
-        <div>Score: <span id="score">0</span></div>
+        <div class="hud-container">
+            <div class="hud-stat">
+                <span class="hud-label">Phase:</span>
+                <span id="phase" class="hud-value">Build Maze</span>
+            </div>
+            <div class="hud-stat">
+                <span class="hud-label">Health:</span>
+                <span id="health" class="hud-value health">100</span>
+            </div>
+            <div class="hud-stat">
+                <span class="hud-label">Money:</span>
+                <span id="money" class="hud-value money">$100</span>
+            </div>
+            <div class="hud-stat">
+                <span class="hud-label">Wave:</span>
+                <span id="wave" class="hud-value">1</span>
+            </div>
+            <div class="hud-stat">
+                <span class="hud-label">Enemies:</span>
+                <span id="enemies" class="hud-value enemies">0</span>
+            </div>
+            <div class="hud-stat">
+                <span class="hud-label">Score:</span>
+                <span id="score" class="hud-value score">0</span>
+            </div>
+        </div>
     </div>
 
     <div id="basic-tower-menu" class="tower-menu">

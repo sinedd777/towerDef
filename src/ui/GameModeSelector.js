@@ -34,13 +34,13 @@ export class GameModeSelector {
                         </div>
                         
                         <div class="mode-option" data-mode="multiplayer">
-                            <div class="mode-icon">⚔️</div>
+                            <div class="mode-icon">🤝</div>
                             <h3>Multiplayer</h3>
-                            <p>Compete against other players</p>
+                            <p>Team up with another player</p>
                             <ul>
-                                <li>Dual-map competitive gameplay</li>
-                                <li>Real-time strategy battles</li>
-                                <li>Online matchmaking</li>
+                                <li>Cooperative tower defense</li>
+                                <li>Shared resources and objectives</li>
+                                <li>Turn-based building phase</li>
                             </ul>
                             <button class="mode-btn multi-btn">Quick Match</button>
                             <div class="matchmaking-status" style="display: none;">
