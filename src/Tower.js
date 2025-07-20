@@ -295,11 +295,71 @@ export class Tower {
     async loadTowerModel(towerType) {
         try {
             const towerModel = await assetManager.createTowerModel(towerType);
-            return towerModel;
+            if (towerModel) {
+                // Keep towers on default layer (0) for bright light
+                towerModel.traverse((child) => {
+                    if (child.isMesh) {
+                        child.layers.set(0);  // Use default layer
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                        
+                        // Apply enhanced materials
+                        if (Array.isArray(child.material)) {
+                            child.material = child.material.map(mat => {
+                                const enhancedMat = mat.clone();
+                                this.enhanceSingleMaterial(enhancedMat);
+                                return enhancedMat;
+                            });
+                        } else {
+                            const enhancedMat = child.material.clone();
+                            this.enhanceSingleMaterial(enhancedMat);
+                            child.material = enhancedMat;
+                        }
+                    }
+                });
+                return towerModel;
+            }
         } catch (error) {
             console.error('Failed to load tower model for type', towerType, ':', error);
             return null;
         }
+    }
+
+    createEnhancedMaterial(originalMaterial) {
+        // Create a new material that extends the original
+        const newMaterial = originalMaterial.clone();
+        
+        // Add custom shader chunks for rim lighting
+        if (newMaterial.onBeforeCompile) {
+            newMaterial.onBeforeCompile = (shader) => {
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    'void main() {',
+                    `
+                    varying vec3 vNormal;
+                    varying vec3 vViewPosition;
+                    
+                    float rimStrength = 0.7;
+                    float rimPower = 2.0;
+                    
+                    void main() {
+                        // Calculate rim lighting
+                        vec3 viewDir = normalize(vViewPosition);
+                        float rim = 1.0 - max(0.0, dot(vNormal, viewDir));
+                        rim = pow(rim, rimPower) * rimStrength;
+                    `
+                );
+                
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    'gl_FragColor = vec4( outgoingLight, diffuseColor.a );',
+                    `
+                        outgoingLight += rim * diffuseColor.rgb;
+                        gl_FragColor = vec4(outgoingLight, diffuseColor.a);
+                    `
+                );
+            };
+        }
+        
+        return newMaterial;
     }
     
     createFallbackMesh(towerConfig) {
@@ -348,21 +408,38 @@ export class Tower {
     }
     
     enhanceSingleMaterial(material) {
-        // Improve material properties for better lighting
-        material.roughness = 0.3;
-        material.metalness = 0.1;
+        // Create a more stylized, vibrant look matching the preview images
+        material.roughness = 0.1;  // Very low roughness for maximum shine
+        material.metalness = 0.7;  // High metalness for strong reflections
         
         // Ensure materials respond to lighting
         if (material.color) {
-            // Area towers are too bright, use less enhancement
-            const colorMultiplier = this.type === 'area' ? 1.0 : 1.2;
-            material.color.multiplyScalar(colorMultiplier);
+            // Enhance color saturation and brightness
+            const color = material.color;
+            const hsl = {};
+            color.getHSL(hsl);
+            
+            // Increase saturation and brightness significantly
+            hsl.s = Math.min(1, hsl.s * 1.4); // 40% more saturation
+            hsl.l = Math.min(1, hsl.l * 1.3); // 30% more brightness
+            
+            color.setHSL(hsl.h, hsl.s, hsl.l);
         }
         
-        // Add slight emissive glow for visibility (less for area towers)
+        // Add stronger emissive glow for better visibility
         if (!material.emissive) {
-            const emissiveColor = this.type === 'area' ? 0x050505 : 0x111111;
-            material.emissive = new THREE.Color(emissiveColor);
+            // Use a color-matched emissive glow
+            const baseColor = material.color || new THREE.Color(0xffffff);
+            const emissiveColor = new THREE.Color()
+                .copy(baseColor)
+                .multiplyScalar(0.25); // 25% of base color intensity
+            material.emissive = emissiveColor;
+        }
+
+        // Add strong specular highlights for better definition
+        if (material.type === 'MeshPhongMaterial') {
+            material.specular = new THREE.Color(0xffffff);
+            material.shininess = 100; // Very high shininess for sharp reflections
         }
         
         material.needsUpdate = true;

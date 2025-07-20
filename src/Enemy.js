@@ -510,11 +510,56 @@ export class Enemy {
     async loadUFOModel(wave) {
         try {
             const ufoModel = await assetManager.getEnemyModel(wave);
-            return ufoModel;
+            if (ufoModel) {
+                // Keep enemies on default layer (0) for bright light
+                ufoModel.traverse((child) => {
+                    if (child.isMesh) {
+                        child.layers.set(0);  // Use default layer
+                        
+                        // Enhance materials
+                        if (Array.isArray(child.material)) {
+                            child.material = child.material.map(mat => this.enhanceEnemyMaterial(mat.clone()));
+                        } else {
+                            child.material = this.enhanceEnemyMaterial(child.material.clone());
+                        }
+                    }
+                });
+                return ufoModel;
+            }
         } catch (error) {
             console.error('Failed to load UFO model for wave', wave, ':', error);
             return null;
         }
+    }
+
+    enhanceEnemyMaterial(material) {
+        // Match tower material enhancements
+        material.roughness = 0.1;
+        material.metalness = 0.7;
+        
+        if (material.color) {
+            const color = material.color;
+            const hsl = {};
+            color.getHSL(hsl);
+            
+            hsl.s = Math.min(1, hsl.s * 1.4);
+            hsl.l = Math.min(1, hsl.l * 1.3);
+            
+            color.setHSL(hsl.h, hsl.s, hsl.l);
+        }
+        
+        if (!material.emissive) {
+            const baseColor = material.color || new THREE.Color(0xffffff);
+            material.emissive = new THREE.Color().copy(baseColor).multiplyScalar(0.25);
+        }
+
+        if (material.type === 'MeshPhongMaterial') {
+            material.specular = new THREE.Color(0xffffff);
+            material.shininess = 100;
+        }
+        
+        material.needsUpdate = true;
+        return material;
     }
     
     createFallbackMesh(wave) {
@@ -527,11 +572,15 @@ export class Enemy {
         const geometry = new THREE.SphereGeometry(size, 8, 6);
         const material = new THREE.MeshPhongMaterial({ 
             map: ENEMY_TEX,
-            color: 0xffffff
+            color: 0xffffff,
+            specular: new THREE.Color(0xffffff),
+            shininess: 100,
+            emissive: new THREE.Color(0xff0000).multiplyScalar(0.25)
         });
         
         const fallbackMesh = new THREE.Mesh(geometry, material);
         fallbackMesh.castShadow = true;
+        fallbackMesh.layers.set(0);  // Use default layer
         
         // Clear the group and add fallback mesh
         this.mesh.clear();

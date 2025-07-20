@@ -48,6 +48,8 @@ export class SceneSetup {
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.camera.position.set(0, 20, 15);
         this.camera.lookAt(0, 0, 0);
+        // Enable all layers for the camera
+        this.camera.layers.enableAll();
     }
 
     createRenderer() {
@@ -96,47 +98,55 @@ export class SceneSetup {
     }
 
     setupLighting() {
-        // Enhanced lighting setup for 3D models - much brighter for Kenney assets
-        const ambientLight = new THREE.AmbientLight(0x606060, 0.8);
-        this.scene.add(ambientLight);
-
-        // Main directional light (sun)
-        const mainLight = new THREE.DirectionalLight(0xffffff, 1.4);
-        mainLight.position.set(10, 15, 8);
-        mainLight.castShadow = true;
+        // Super bright light for towers and enemies (default layer 0)
+        const brightLight = new THREE.DirectionalLight(0xffffff, 2.5);
+        brightLight.position.set(10, 25, 15); // Higher and more angled for dramatic lighting
+        brightLight.castShadow = true;
 
         // Enhanced shadow settings
-        mainLight.shadow.mapSize.width = 4096;
-        mainLight.shadow.mapSize.height = 4096;
-        mainLight.shadow.camera.near = 0.5;
-        mainLight.shadow.camera.far = 50;
-        mainLight.shadow.camera.left = -25;
-        mainLight.shadow.camera.right = 25;
-        mainLight.shadow.camera.top = 25;
-        mainLight.shadow.camera.bottom = -25;
-        mainLight.shadow.bias = -0.0001;
-        mainLight.shadow.normalBias = 0.02;
+        brightLight.shadow.mapSize.width = 4096;
+        brightLight.shadow.mapSize.height = 4096;
+        brightLight.shadow.camera.near = 0.5;
+        brightLight.shadow.camera.far = 50;
+        brightLight.shadow.camera.left = -25;
+        brightLight.shadow.camera.right = 25;
+        brightLight.shadow.camera.top = 25;
+        brightLight.shadow.camera.bottom = -25;
+        brightLight.shadow.bias = -0.0001;
+        brightLight.shadow.normalBias = 0.02;
 
-        this.scene.add(mainLight);
+        // Keep bright light on default layer (0)
+        brightLight.layers.set(0);
 
-        // Secondary fill light for softer shadows
-        const fillLight = new THREE.DirectionalLight(0x4444ff, 0.3);
-        fillLight.position.set(-8, 8, -8);
+        this.scene.add(brightLight);
+
+        // Add a secondary fill light for towers/enemies to reduce harsh shadows
+        const fillLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        fillLight.position.set(-5, 15, -10); // Light from opposite side
+        fillLight.layers.set(0);
         this.scene.add(fillLight);
 
-        // Rim light for model definition
-        const rimLight = new THREE.DirectionalLight(0xffd700, 0.4);
-        rimLight.position.set(0, 5, -10);
-        this.scene.add(rimLight);
+        // Dimmer light for environment (layer 1)
+        const dimLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        dimLight.position.copy(brightLight.position);
+        dimLight.castShadow = true;
+        
+        // Copy shadow settings
+        dimLight.shadow.mapSize.copy(brightLight.shadow.mapSize);
+        dimLight.shadow.camera.copy(brightLight.shadow.camera);
+        dimLight.shadow.bias = brightLight.shadow.bias;
+        dimLight.shadow.normalBias = brightLight.shadow.normalBias;
 
-        // Point lights for dynamic illumination near spawn points
-        const spawnLight = new THREE.PointLight(0x00ff00, 0.5, 10);
-        spawnLight.position.set(-8, 2, -8); // Near enemy spawn
-        this.scene.add(spawnLight);
+        // Set dim light to only affect layer 1
+        dimLight.layers.set(1);
 
-        const endLight = new THREE.PointLight(0xff0000, 0.5, 10);
-        endLight.position.set(8, 2, 8); // Near enemy end
-        this.scene.add(endLight);
+        this.scene.add(dimLight);
+
+        // Very subtle ambient light to prevent completely black shadows
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
+        // Make ambient light affect all layers
+        ambientLight.layers.enableAll();
+        this.scene.add(ambientLight);
     }
 
     createGround() {
