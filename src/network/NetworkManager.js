@@ -34,6 +34,7 @@ export class NetworkManager {
         // Tower callbacks
         this.onTowerPlaced = null;
         this.onTowerPlaceFailed = null;
+        this.onTowerPlayerPlaced = null; // For other players' tower placements
         this.onTowerUpgraded = null;
         this.onTowerUpgradeFailed = null;
         this.onTowerSold = null;
@@ -132,15 +133,17 @@ export class NetworkManager {
         
         this.socket.on('session:created', (data) => {
             this.sessionId = data.sessionId;
-            this.playerId = data.player.id;
+            this.playerId = data.player.playerId; // Fixed: use playerId instead of id
             this.isHost = true;
+            console.log('🎯 NETWORK: Session created, playerId set to:', this.playerId);
             if (this.onSessionJoined) this.onSessionJoined(data);
         });
         
         this.socket.on('session:joined', (data) => {
             this.sessionId = data.sessionId;
-            this.playerId = data.player.id;
+            this.playerId = data.player.playerId; // Fixed: use playerId instead of id
             this.isHost = false;
+            console.log('🎯 NETWORK: Session joined, playerId set to:', this.playerId);
             if (this.onSessionJoined) this.onSessionJoined(data);
         });
         
@@ -277,14 +280,20 @@ export class NetworkManager {
         });
 
         this.socket.on('tower:placed', (data) => {
+            console.log('🎯 NETWORK: Received tower:placed event from server:', data);
             if (this.onTowerPlaced) {
                 this.onTowerPlaced(data);
+            } else {
+                console.warn('⚠️ NETWORK: No callback set for tower:placed event');
             }
         });
 
         this.socket.on('tower:place_failed', (data) => {
+            console.log('❌ NETWORK: Received tower:place_failed event from server:', data);
             if (this.onTowerPlaceFailed) {
                 this.onTowerPlaceFailed(data);
+            } else {
+                console.warn('⚠️ NETWORK: No callback set for tower:place_failed event');
             }
         });
 
@@ -309,6 +318,16 @@ export class NetworkManager {
         this.socket.on('tower:sell_failed', (data) => {
             if (this.onTowerSellFailed) {
                 this.onTowerSellFailed(data);
+            }
+        });
+
+        // Listen for other players' tower placements
+        this.socket.on('tower:player_placed', (data) => {
+            console.log('🏗️ NETWORK: Received tower:player_placed event from server:', data);
+            if (this.onTowerPlayerPlaced) {
+                this.onTowerPlayerPlaced(data);
+            } else {
+                console.warn('⚠️ NETWORK: No callback set for tower:player_placed event');
             }
         });
     }
@@ -361,12 +380,33 @@ export class NetworkManager {
     }
     
     placeTower(x, z, towerType) {
+        console.log('🚀 NETWORK: Sending tower placement to server:', {
+            type: towerType,
+            position: { x, z },
+            playerId: this.playerId,
+            sessionId: this.sessionId,
+            isConnected: this.isConnected,
+            hasSocket: !!this.socket
+        });
+        
+        if (!this.socket) {
+            console.error('❌ NETWORK: No socket available for tower placement');
+            return;
+        }
+        
+        if (!this.isConnected) {
+            console.error('❌ NETWORK: Not connected to server');
+            return;
+        }
+        
         this.socket.emit('tower:place', {
             type: towerType,
             position: { x, z },
             playerId: this.playerId,
             timestamp: Date.now()
         });
+        
+        console.log('✅ NETWORK: Tower placement request sent');
     }
     
     upgradeTower(towerId) {
@@ -475,6 +515,10 @@ export class NetworkManager {
 
     setOnTowerSellFailed(callback) {
         this.onTowerSellFailed = callback;
+    }
+
+    setOnTowerPlayerPlaced(callback) {
+        this.onTowerPlayerPlaced = callback;
     }
 
     setOnPathsUpdated(callback) {

@@ -73,6 +73,19 @@ export class GameController {
             this.eventHub.emit('game:turn_changed', data);
         });
         
+        // === TOWER EVENTS ===
+        this.networkManager.setOnTowerPlaced((data) => {
+            this.eventHub.emit('tower:placed', data);
+        });
+        
+        this.networkManager.setOnTowerPlaceFailed((data) => {
+            this.eventHub.emit('tower:place_failed', data);
+        });
+        
+        this.networkManager.setOnTowerPlayerPlaced((data) => {
+            this.eventHub.emit('tower:player_placed', data);
+        });
+        
         // === ENEMY EVENTS ===
         this.networkManager.setOnEnemySpawned((data) => {
             console.log('🌉 GameController: Enemy spawned, bridging to EventHub');

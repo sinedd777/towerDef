@@ -80,10 +80,17 @@ export class MultiplayerTowerInputManager {
         
         this.currentTurn = currentTurn;
         this.gamePhase = gamePhase;
-        this.isMyTurn = (currentTurn === localPlayerId) && (gamePhase === 'defense');
         
-        console.log('🎯 New state - currentTurn:', this.currentTurn, 'isMyTurn:', this.isMyTurn);
-        debugLog(`Turn updated: ${currentTurn}, myTurn: ${this.isMyTurn}`, 'TOWER_INPUT');
+        // During defense phase, both players can place towers freely (cooperative gameplay)
+        if (gamePhase === 'defense') {
+            this.isMyTurn = true; // Always allow tower placement during defense
+        } else {
+            // During building phase, maintain turn-based system for maze building
+            this.isMyTurn = (currentTurn === localPlayerId);
+        }
+        
+        console.log('🎯 New state - currentTurn:', this.currentTurn, 'isMyTurn:', this.isMyTurn, `(defense=${gamePhase === 'defense' ? 'free placement' : 'turn-based'})`);
+        debugLog(`Turn updated: ${currentTurn}, myTurn: ${this.isMyTurn} (${gamePhase} phase)`, 'TOWER_INPUT');
     }
 
     onMouseMove(event) {
@@ -154,8 +161,8 @@ export class MultiplayerTowerInputManager {
     }
 
     onClick(event) {
-        // Check turn-based restrictions for multiplayer
-        if (!this.isMyTurn) {
+        // Check turn-based restrictions for multiplayer (only during building phase)
+        if (!this.isMyTurn && this.gamePhase !== 'defense') {
             this.showTurnMessage();
             return;
         }
@@ -419,6 +426,11 @@ export class MultiplayerTowerInputManager {
     // Turn restriction messaging
     showTurnMessage() {
         console.log('🚨 showTurnMessage called - currentTurn:', this.currentTurn, 'isMyTurn:', this.isMyTurn);
+        
+        // Don't show turn messages during defense phase since both players can place towers
+        if (this.gamePhase === 'defense') {
+            return;
+        }
         
         const message = document.createElement('div');
         message.style.cssText = `

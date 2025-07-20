@@ -31,8 +31,16 @@ export class ActionDispatcher {
         console.log('🎮 ActionDispatcher: Placing tower', { towerType, position });
         
         if (!this.networkManager) {
+            console.error('❌ ActionDispatcher: NetworkManager not available');
             throw new Error('NetworkManager not available');
         }
+        
+        console.log('🎮 ActionDispatcher: NetworkManager state:', {
+            isConnected: this.networkManager.isConnected,
+            sessionId: this.networkManager.sessionId,
+            playerId: this.networkManager.playerId,
+            hasSocket: !!this.networkManager.socket
+        });
         
         this.networkManager.placeTower(position.x, position.z, towerType);
     }

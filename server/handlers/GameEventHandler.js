@@ -35,24 +35,53 @@ class GameEventHandler {
             console.log('🏗️ SERVER: Received tower placement request:', {
                 socketId: socket.id,
                 playerId: socket.playerId,
-                data: data
+                data: data,
+                timestamp: new Date().toISOString()
             });
             
+            // Debug: Check current game session state
+            const sessionId = this.sessionHandler.playerSessions.get(socket.id);
+            const session = sessionId ? this.sessionHandler.sessions.get(sessionId) : null;
+            if (session) {
+                console.log('🔍 SERVER: Current session state:', {
+                    sessionId: session.sessionId,
+                    gameMode: session.gameMode,
+                    gamePhase: session.gameState.gamePhase,
+                    currentTurn: session.gameState.currentTurn,
+                    shapesPlaced: session.gameState.shapesPlaced
+                });
+            } else {
+                console.log('❌ SERVER: No session found for socket:', socket.id);
+            }
+            
+            console.log('🏗️ SERVER: Processing tower placement via GameLogic...');
             const result = this.processGameAction(socket, 'tower:place', data);
             
             console.log('🏗️ SERVER: Tower placement result:', {
                 success: result.success,
                 reason: result.reason,
-                tower: result.success ? result.data?.tower : null
+                tower: result.success ? result.data?.tower : null,
+                timestamp: new Date().toISOString()
             });
             
             if (result.success) {
+                console.log('✅ SERVER: Tower placement successful, sending tower:placed event');
                 socket.emit('tower:placed', result.data);
                 
-                // For cooperative mode, broadcast turn changes and resource updates
+                // For cooperative mode, broadcast tower placement to ALL players in session
                 const sessionId = this.sessionHandler.playerSessions.get(socket.id);
                 const session = sessionId ? this.sessionHandler.sessions.get(sessionId) : null;
                 if (session && session.gameMode === 'cooperative') {
+                    console.log('📡 SERVER: Broadcasting tower placement to all players in session');
+                    
+                    // Broadcast tower placement event to ALL players (including the one who placed it)
+                    this.sessionHandler.io.to(session.sessionId).emit('tower:player_placed', {
+                        tower: result.data.tower,
+                        playerId: socket.playerId,
+                        sharedResources: session.gameState.sharedResources
+                    });
+                    
+                    // Also send general state update for other UI updates
                     const gameState = session.gameState.getPublicState();
                     this.sessionHandler.io.to(session.sessionId).emit('game:state_update', {
                         currentTurn: gameState.currentTurn,
@@ -63,15 +92,11 @@ class GameEventHandler {
                 
                 this.logger.debug(`Tower placed by ${socket.id}:`, result.data.tower);
             } else {
+                console.log('❌ SERVER: Tower placement failed, sending tower:place_failed event');
                 socket.emit('tower:place_failed', { reason: result.reason });
                 
-                // Send helpful error messages for turn-based failures
-                if (result.reason === 'not_your_turn') {
-                    socket.emit('game:message', { 
-                        type: 'info', 
-                        message: 'Please wait for your turn to place a tower.' 
-                    });
-                } else if (result.reason === 'insufficient_funds') {
+                // Send helpful error messages for various failures
+                if (result.reason === 'insufficient_funds') {
                     socket.emit('game:message', { 
                         type: 'warning', 
                         message: 'Not enough shared money for this tower.' 
@@ -86,6 +111,7 @@ class GameEventHandler {
                 this.logger.warn(`Tower placement failed for ${socket.id}: ${result.reason}`);
             }
         } catch (error) {
+            console.error('💥 SERVER: Error handling tower placement:', error);
             this.logger.error('Error handling tower placement:', error);
             socket.emit('tower:place_failed', { reason: 'server_error' });
         }

@@ -284,6 +284,19 @@ export class MultiplayerGame {
             this.handleOtherPlayerMazePlacement(data);
         });
         
+        // === TOWER EVENTS ===
+        this.eventHub.on('tower:placed', (data) => {
+            this.handleTowerPlacementSuccess(data);
+        });
+        
+        this.eventHub.on('tower:place_failed', (data) => {
+            this.handleTowerPlacementFailure(data);
+        });
+        
+        this.eventHub.on('tower:player_placed', (data) => {
+            this.handlePlayerTowerPlacement(data);
+        });
+        
         // === ENEMY EVENTS ===
         this.eventHub.on('enemy:spawned', (data) => {
             // Create enemy in scene
@@ -478,6 +491,11 @@ export class MultiplayerGame {
 
         this.networkManager.setOnTowerPlaceFailed((data) => {
             this.handleTowerPlacementFailure(data);
+        });
+        
+        // Handle all players' tower placements (including own for consistency)
+        this.networkManager.setOnTowerPlayerPlaced((data) => {
+            this.handlePlayerTowerPlacement(data);
         });
 
         // Add spectator update handler (keep existing for compatibility)
@@ -1586,6 +1604,48 @@ export class MultiplayerGame {
         // Add to scene and towers map
         this.multiplayerScene.scene.add(tower.mesh);
         this.towers.set(towerData.id, tower);
+    }
+
+    /**
+     * Handle all players' tower placements (broadcast event)
+     */
+    handlePlayerTowerPlacement(data) {
+        console.log('🏗️ CLIENT: Received player tower placement:', data);
+        
+        // Check if this tower already exists (to avoid duplicates)
+        if (this.towers.has(data.tower.id)) {
+            console.log('🏗️ CLIENT: Tower already exists, skipping creation');
+            
+            // Still update shared resources for consistency
+            if (data.sharedResources) {
+                this.gameState.setMoney(data.sharedResources.money);
+                console.log('💰 CLIENT: Updated shared money to', data.sharedResources.money);
+            }
+            return;
+        }
+        
+        // Create tower in the scene for ALL players
+        if (data.tower) {
+            console.log('🏗️ CLIENT: Creating tower from player placement:', data.tower.id);
+            this.createTowerFromServerData(data.tower);
+            
+            // Show placement message
+            const playerName = data.playerId === this.localPlayerId ? 'You' : data.playerId;
+            this.showGameMessage(`${playerName} placed a ${data.tower.type} tower!`, 'info');
+        }
+        
+        // Update shared resources (money deducted)
+        if (data.sharedResources) {
+            this.gameState.setMoney(data.sharedResources.money);
+            console.log('💰 CLIENT: Updated shared money to', data.sharedResources.money);
+        }
+        
+        // Update tower UI for both players
+        if (this.towerSelectionUI) {
+            this.towerSelectionUI.updateTowerMenu();
+        }
+        
+        console.log('✅ CLIENT: Player tower placement handled successfully');
     }
 
     /**

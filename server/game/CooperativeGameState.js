@@ -141,7 +141,8 @@ class CooperativeGameState {
         
         // Add to maze grid
         for (const pos of mazeData.positions) {
-            const gridPos = `${pos.x},${pos.z}`;
+            // Use underscore format to match client key format
+            const gridPos = `${pos.x.toFixed(1)}_${pos.z.toFixed(1)}`;
             console.log('🧩 Storing maze block:', {
                 position: pos,
                 gridKey: gridPos,
@@ -221,11 +222,6 @@ class CooperativeGameState {
     
     // Tower Management (Defense Phase)
     placeTower(playerId, towerData) {
-        // Validate it's the player's turn
-        if (!this.isPlayerTurn(playerId)) {
-            return { success: false, reason: 'not_your_turn' };
-        }
-        
         // Validate we're in defense phase
         if (this.gamePhase !== 'defense') {
             return { success: false, reason: 'not_defense_phase' };
@@ -263,8 +259,7 @@ class CooperativeGameState {
         this.markEntityChanged('towers', towerId);
         this.markEntityChanged('gameState', 'resources');
         
-        // Switch turn
-        this.switchTurn();
+        // No turn switching during defense phase - both players can place towers freely
         
         return { success: true, tower };
     }
@@ -285,7 +280,8 @@ class CooperativeGameState {
         }
         
         // Check if position is NOT on a maze block (towers must be placed on maze blocks)
-        const gridPos = `${pos.x.toFixed(1)},${pos.z.toFixed(1)}`;
+        // Use underscore format to match client key format
+        const gridPos = `${pos.x.toFixed(1)}_${pos.z.toFixed(1)}`;
         
         console.log('🔍 Maze block validation:', {
             lookingFor: gridPos,

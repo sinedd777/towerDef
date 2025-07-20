@@ -213,6 +213,12 @@ class GameLogic {
         if (!validation.success) return validation;
         
         // Check game phase
+        console.log('🔍 GAMELOGIC: Tower placement phase check:', {
+            currentPhase: this.gameState.gamePhase,
+            expectedPhase: 'defense',
+            phaseMatch: this.gameState.gamePhase === 'defense'
+        });
+        
         if (this.gameState.gamePhase !== 'defense') {
             return { success: false, reason: 'wrong_phase' };
         }
@@ -438,7 +444,7 @@ class GameLogic {
             return { success: false, reason: 'missing_required_fields' };
         }
         
-        const validTypes = ['basic', 'sniper', 'cannon', 'missile'];
+        const validTypes = ['basic', 'sniper', 'rapid', 'area'];
         if (!validTypes.includes(data.type)) {
             return { success: false, reason: 'invalid_tower_type' };
         }
