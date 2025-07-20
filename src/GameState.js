@@ -72,16 +72,23 @@ export class GameState {
             this.maxEnemies = Math.floor(this.maxEnemies * 1.2); // 20% more enemies each wave
             // NEW: Reset spawned counter for the new wave
             this.enemiesSpawned = 0;
-            // NEW: Start wave cooldown timer
-            this.waveCooldownEnd = Date.now() + this.waveDelay;
-            this.addMoney(50); // Wave completion bonus
-            this.addScore(500);
             
             // Check if we should give a new shape
-            if (this.shouldGiveNewShape()) {
+            const shouldGiveShape = this.shouldGiveNewShape();
+            
+            if (shouldGiveShape) {
+                // At level 5 (and multiples of 5), skip the countdown and go directly to building phase
                 this.lastShapeWave = this.wave;
                 this.resetToMazeBuildingPhase();
+                console.log(`Wave ${this.wave}: Skipping countdown for shape wave - immediate building phase transition`);
+            } else {
+                // For regular waves, use the normal countdown
+                this.waveCooldownEnd = Date.now() + this.waveDelay;
+                console.log(`Wave ${this.wave}: Starting ${this.waveDelay/1000}s countdown before next wave`);
             }
+            
+            this.addMoney(50); // Wave completion bonus
+            this.addScore(500);
         }
         this.updateHUD();
     }
