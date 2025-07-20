@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { Enemy } from '../Enemy.js';
 
 export class AssetManager {
     constructor() {
@@ -390,10 +391,7 @@ export class AssetManager {
      * @returns {Promise<THREE.Group>}
      */
     async getEnemyModel(wave) {
-        const enemyTypes = ['ufo-a', 'ufo-b', 'ufo-c', 'ufo-d'];
-        const typeIndex = Math.min(Math.floor((wave - 1) / 5), enemyTypes.length - 1);
-        const enemyType = enemyTypes[typeIndex];
-        
+        const enemyType = Enemy.getEnemyTypeForWave(wave);
         return await this.loadAsset('enemies', enemyType);
     }
 

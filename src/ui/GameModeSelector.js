@@ -54,10 +54,6 @@ export class GameModeSelector {
                     <div class="server-status" id="server-status">
                         <span class="status-text">Checking server connection...</span>
                     </div>
-                    
-                    <div class="game-info">
-                        <p>Use WASD or arrow keys to move camera • Mouse to interact • R to rotate pieces</p>
-                    </div>
                 </div>
             </div>
         `;

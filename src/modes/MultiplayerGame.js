@@ -333,7 +333,7 @@ export class MultiplayerGame {
                 // Extract wave number from enemy type (e.g., 'ufo-a' = wave 1, 'ufo-b' = wave 2)
                 let wave = 1;
                 if (data.enemy.type) {
-                    const typeMap = { 'ufo-a': 1, 'ufo-b': 2, 'ufo-c': 3, 'ufo-d': 4 };
+                    const typeMap = { 'ufo-a': 1, 'ufo-d': 2 };
                     wave = typeMap[data.enemy.type] || 1;
                 }
                 
@@ -657,7 +657,7 @@ export class MultiplayerGame {
                 // Extract wave number from enemy type (e.g., 'ufo-a' = wave 1, 'ufo-b' = wave 2)
                 let wave = 1;
                 if (data.enemy.type) {
-                    const typeMap = { 'ufo-a': 1, 'ufo-b': 2, 'ufo-c': 3, 'ufo-d': 4 };
+                    const typeMap = { 'ufo-a': 1, 'ufo-d': 2 };
                     wave = typeMap[data.enemy.type] || 1;
                 }
                 console.log('👾 Enemy wave calculated:', wave, 'from type:', data.enemy.type);

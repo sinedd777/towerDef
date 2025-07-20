@@ -7,6 +7,12 @@ import { assetManager } from './managers/AssetManager.js';
 const ENEMY_TEX = new THREE.MeshPhongMaterial({ color: 0xff0000 });
 
 export class Enemy {
+    // Static method to determine enemy type based on wave
+    static getEnemyTypeForWave(wave) {
+        // Alternate between 'ufo-a' and 'ufo-d'
+        return wave % 2 === 0 ? 'ufo-d' : 'ufo-a';
+    }
+
     constructor(waypoints, wave = 1) {
         this.originalWaypoints = waypoints;
         this.waypoints = waypoints;
