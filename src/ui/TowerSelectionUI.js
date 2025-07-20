@@ -1,5 +1,5 @@
 import { debugLog } from '../config/DebugConfig.js';
-import { TOWER_TYPES } from '../TowerTypes.js';
+import { TOWER_TYPES, calculateUpgradeCost } from '../TowerTypes.js';
 
 export class TowerSelectionUI {
     constructor(gameState) {
@@ -209,6 +209,8 @@ export class TowerSelectionUI {
         tooltip.className = 'tower-tooltip';
         
         const towerConfig = TOWER_TYPES[tower.id.toUpperCase()];
+        const nextLevel = 1; // For base tower
+        const upgradeCost = calculateUpgradeCost(tower.id, nextLevel);
         
         tooltip.innerHTML = `
             <div class="tower-tooltip-header">
@@ -216,17 +218,30 @@ export class TowerSelectionUI {
                 <div class="tower-tooltip-description">${towerConfig.description}</div>
             </div>
             <div class="tower-tooltip-stats">
-                <div class="stat-label">Damage:</div>
-                <div class="stat-value">${towerConfig.damage}</div>
-                <div class="stat-label">Fire Rate:</div>
-                <div class="stat-value">${towerConfig.fireRate}/s</div>
-                <div class="stat-label">Range:</div>
-                <div class="stat-value">${towerConfig.range}</div>
+                <div class="stat-label">Damage</div>
+                <div class="stat-value damage">${towerConfig.damage}</div>
+                
+                <div class="stat-label">Fire Rate</div>
+                <div class="stat-value fire-rate">${towerConfig.fireRate}/s</div>
+                
+                <div class="stat-label">Range</div>
+                <div class="stat-value range">${towerConfig.range} units</div>
+                
                 ${towerConfig.splashRadius ? `
-                    <div class="stat-label">Area:</div>
-                    <div class="stat-value">${towerConfig.splashRadius}</div>
+                    <div class="stat-label">Area</div>
+                    <div class="stat-value area">${towerConfig.splashRadius} units</div>
                 ` : ''}
+                
+                <div class="stat-label">DPS</div>
+                <div class="stat-value damage">${(towerConfig.damage * towerConfig.fireRate).toFixed(1)}</div>
             </div>
+            ${upgradeCost ? `
+                <div class="tower-tooltip-upgrade">
+                    ↑ Next upgrade: ${upgradeCost} coins
+                    <br>• Damage +${Math.round((towerConfig.upgrade.damageMultiplier - 1) * 100)}%
+                    <br>• Fire Rate +${Math.round((towerConfig.upgrade.fireRateMultiplier - 1) * 100)}%
+                </div>
+            ` : ''}
         `;
         
         return tooltip;
