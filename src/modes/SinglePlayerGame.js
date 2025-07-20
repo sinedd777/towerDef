@@ -17,6 +17,7 @@ import { ParticleSystem } from '../effects/ParticleSystem.js';
 import { SceneSetup } from '../core/SceneSetup.js';
 import { GameSummaryUI } from '../ui/GameSummaryUI.js';
 import { Modal } from '../ui/Modal.js';
+import { WaveCountdownUI } from '../ui/TurnIndicatorUI.js';
 
 export class SinglePlayerGame {
     constructor() {
@@ -43,6 +44,9 @@ export class SinglePlayerGame {
         this.loadingScreen = null;
         this.gameSummaryUI = null;  // Add game summary UI
         this.infoModal = new Modal();
+        
+        // Add wave countdown UI
+        this.waveCountdownUI = new WaveCountdownUI();
         
         // Show info modal with game objectives and strategy tips
         const modalContent = `
@@ -323,6 +327,9 @@ export class SinglePlayerGame {
         
         // Initialize environment with obstacles and spawn points
         this.environmentManager.initializeEnvironment(obstacles, this.enemyStartPosition, this.enemyEndPosition);
+
+        // Start first wave with countdown
+        this.gameState.startFirstWaveCountdown();
         
         console.log('Defense phase started');
     }
@@ -416,6 +423,14 @@ export class SinglePlayerGame {
         
         const currentTime = Date.now();
         
+        // Update wave countdown if in cooldown
+        if (this.gameState.isWaveCoolingDown()) {
+            const timeLeft = (this.gameState.getWaveCooldownEnd() - currentTime) / 1000; // Convert to seconds
+            this.waveCountdownUI.show(timeLeft);
+        } else {
+            this.waveCountdownUI.hide();
+        }
+
         // Animate dashed line
         if (this.pathLine) {
             // Move dash offset to create motion illusion
@@ -674,6 +689,10 @@ export class SinglePlayerGame {
         if (this.infoModal) {
             this.infoModal.destroy();
             this.infoModal = null;
+        }
+        if (this.waveCountdownUI) {
+            this.waveCountdownUI.cleanup();
+            this.waveCountdownUI = null;
         }
         
         // Cleanup input managers

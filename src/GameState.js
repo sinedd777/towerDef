@@ -13,6 +13,7 @@ export class GameState {
         // NEW: Delay between waves (milliseconds)
         this.waveDelay = 10000; // 10 seconds
         this.waveCooldownEnd = 0; // Timestamp until which spawning is paused
+        this.firstWaveStarted = false; // Track if first wave has started
         
         // Game phases: 'MAZE_BUILDING' or 'DEFENSE'
         this.currentPhase = 'MAZE_BUILDING';
@@ -20,7 +21,7 @@ export class GameState {
         
         // Track when to give new shapes
         this.lastShapeWave = 0;
-        this.wavesPerShape = 1; // Changed from 5 to 1
+        this.wavesPerShape = 5; // Set back to 5 waves per shape
         
         // DOM element references
         this.moneyElement = document.getElementById('money');
@@ -106,9 +107,18 @@ export class GameState {
         return Date.now() < this.waveCooldownEnd;
     }
 
+    // Add getter for wave cooldown end time
+    getWaveCooldownEnd() {
+        return this.waveCooldownEnd;
+    }
+
     // NEW: Returns true if we can spawn an enemy (spawn limit + cooldown)
     canSpawnMore() {
-        return !this.isWaveCoolingDown() && this.enemiesSpawned < this.maxEnemies;
+        // Don't spawn enemies until the first wave countdown is complete
+        if (!this.firstWaveStarted || this.isWaveCoolingDown()) {
+            return false;
+        }
+        return this.enemiesSpawned < this.maxEnemies;
     }
     
     canAfford(cost) {
@@ -206,7 +216,8 @@ export class GameState {
             // NEW: Persist enemiesSpawned so reloading mid-wave keeps correct state
             enemiesSpawned: this.enemiesSpawned,
             // NEW: Persist waveCooldownEnd for mid-wave delays
-            waveCooldownEnd: this.waveCooldownEnd
+            waveCooldownEnd: this.waveCooldownEnd,
+            firstWaveStarted: this.firstWaveStarted
         };
         
         localStorage.setItem('towerDefenseGameState', JSON.stringify(saveData));
@@ -228,11 +239,19 @@ export class GameState {
             this.enemiesSpawned = data.enemiesSpawned || 0;
             // NEW: Restore cooldown timer
             this.waveCooldownEnd = data.waveCooldownEnd || 0;
+            this.firstWaveStarted = data.firstWaveStarted || false;
             this.updateHUD();
         }
     }
 
     shouldGiveNewShape() {
-        return this.wave > this.lastShapeWave;  // Changed to give a shape after every wave
+        // Give a new shape every 5 waves
+        return this.wave > this.lastShapeWave && this.wave % this.wavesPerShape === 0;
+    }
+
+    startFirstWaveCountdown() {
+        // Set the cooldown for the first wave
+        this.waveCooldownEnd = Date.now() + this.waveDelay;
+        this.firstWaveStarted = true;
     }
 } 

@@ -209,6 +209,76 @@ export class TurnIndicatorUI {
     }
 }
 
+export class WaveCountdownUI {
+    constructor() {
+        this.container = document.createElement('div');
+        this.container.id = 'wave-countdown';
+        this.container.style.display = 'none';
+        this.container.className = 'wave-countdown';
+        
+        // Create the countdown text element
+        this.countdownText = document.createElement('div');
+        this.countdownText.className = 'wave-countdown-text';
+        this.container.appendChild(this.countdownText);
+        
+        // Add styles
+        const style = document.createElement('style');
+        style.textContent = `
+            .wave-countdown {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background-color: rgba(0, 0, 0, 0.7);
+                color: white;
+                padding: 20px 40px;
+                border-radius: 10px;
+                font-size: 24px;
+                font-weight: bold;
+                text-align: center;
+                z-index: 1000;
+                pointer-events: none;
+                transition: opacity 0.3s ease;
+            }
+            
+            .wave-countdown-text {
+                margin-bottom: 10px;
+            }
+            
+            .wave-countdown.fade-out {
+                opacity: 0;
+            }
+        `;
+        document.head.appendChild(style);
+        
+        // Add to DOM
+        document.body.appendChild(this.container);
+    }
+    
+    show(secondsLeft) {
+        this.container.classList.remove('fade-out');
+        this.container.style.display = 'block';
+        this.updateTime(secondsLeft);
+    }
+    
+    hide() {
+        this.container.classList.add('fade-out');
+        setTimeout(() => {
+            this.container.style.display = 'none';
+        }, 300); // Match the transition duration
+    }
+    
+    updateTime(secondsLeft) {
+        this.countdownText.textContent = `Next Wave in ${Math.ceil(secondsLeft)}s`;
+    }
+    
+    cleanup() {
+        if (this.container && this.container.parentNode) {
+            this.container.parentNode.removeChild(this.container);
+        }
+    }
+}
+
 // Add CSS animation for pulse effect
 const style = document.createElement('style');
 style.textContent = `
