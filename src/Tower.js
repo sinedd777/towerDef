@@ -83,7 +83,7 @@ export class Tower {
         // Create range indicator
         const rangeGeometry = new THREE.RingGeometry(this.range - 0.1, this.range, 32);
         const rangeMaterial = new THREE.MeshBasicMaterial({ 
-            color: towerConfig.color, 
+            color: 0x888888, // Change to grey for all towers
             transparent: true, 
             opacity: 0.2,
             side: THREE.DoubleSide
@@ -99,33 +99,36 @@ export class Tower {
         this.weaponMesh = null;
         this.weaponRotationGroup = null;
         
-        // For area tower, create pulse effect
+        // For area tower, create particle emitters
         if (this.type === 'area') {
-            this.pulseEffect = new THREE.Mesh(
-                new THREE.CircleGeometry(this.range, 32),
-                new THREE.MeshBasicMaterial({
-                    color: towerConfig.color,
-                    transparent: true,
-                    opacity: 0.0,
-                    side: THREE.DoubleSide
-                })
-            );
-            this.pulseEffect.rotation.x = -Math.PI / 2;
-            this.pulseEffect.position.set(0, -0.48, 0);
-            this.mesh.add(this.pulseEffect);
+            // Create particle system for area effect
+            this.particles = [];
+            this.maxParticles = 20;
             
-            // Add glow effect
-            const glowGeometry = new THREE.CircleGeometry(this.range * 0.8, 32);
-            const glowMaterial = new THREE.MeshBasicMaterial({
-                color: towerConfig.color,
+            // Create particle geometry and materials
+            this.particleGeometry = new THREE.SphereGeometry(0.05, 4, 4);
+            this.particleMaterial = new THREE.MeshBasicMaterial({
+                color: 0x888888, // Grey color
                 transparent: true,
-                opacity: 0.2,
-                side: THREE.DoubleSide
+                opacity: 0.6
             });
-            this.glowEffect = new THREE.Mesh(glowGeometry, glowMaterial);
-            this.glowEffect.rotation.x = -Math.PI / 2;
-            this.glowEffect.position.set(0, -0.47, 0);
-            this.mesh.add(this.glowEffect);
+            
+            // Initialize particles
+            for (let i = 0; i < this.maxParticles; i++) {
+                const particle = {
+                    mesh: new THREE.Mesh(this.particleGeometry, this.particleMaterial.clone()),
+                    angle: Math.random() * Math.PI * 2,
+                    radius: (Math.random() * 0.5 + 0.5) * this.range,
+                    speed: 0.5 + Math.random() * 0.5,
+                    verticalOffset: Math.random() * 0.5
+                };
+                
+                this.particles.push(particle);
+                this.mesh.add(particle.mesh);
+            }
+            
+            // Start particle animation
+            this.animateParticles();
         }
         
         this.currentTarget = null;
@@ -203,8 +206,8 @@ export class Tower {
         this.lastShotTime = Date.now();
         
         if (this.type === 'area') {
-            // Pulse attack for area tower
-            const enemies = target; // In this case, target is the enemies array
+            // Area attack logic
+            const enemies = target;
             const deadEnemies = [];
             
             for (const enemy of enemies) {
@@ -215,31 +218,12 @@ export class Tower {
                     if (!enemy.isAlive()) {
                         deadEnemies.push(enemy);
                     }
+                    
+                    // Create impact particles at enemy position
+                    this.createImpactParticles(enemy.getPosition());
                 }
             }
             
-            // Animate pulse effect
-            const pulseAnimation = () => {
-                const startOpacity = 0.5;
-                const duration = 500; // ms
-                const startTime = Date.now();
-                
-                const animate = () => {
-                    const elapsed = Date.now() - startTime;
-                    const progress = Math.min(elapsed / duration, 1);
-                    
-                    this.pulseEffect.material.opacity = startOpacity * (1 - progress);
-                    
-                    if (progress < 1) {
-                        requestAnimationFrame(animate);
-                    }
-                };
-                
-                this.pulseEffect.material.opacity = startOpacity;
-                animate();
-            };
-            
-            pulseAnimation();
             return deadEnemies;
         }
         
@@ -557,6 +541,113 @@ export class Tower {
         };
         
         animateParticles();
+    }
+
+    createImpactParticles(position) {
+        const particleCount = 5;
+        const particles = [];
+        
+        for (let i = 0; i < particleCount; i++) {
+            const particle = new THREE.Mesh(
+                new THREE.SphereGeometry(0.05, 4, 4),
+                new THREE.MeshBasicMaterial({
+                    color: 0x888888,
+                    transparent: true,
+                    opacity: 0.8
+                })
+            );
+            
+            particle.position.copy(position);
+            
+            // Random velocity
+            const velocity = new THREE.Vector3(
+                (Math.random() - 0.5) * 2,
+                Math.random() * 2,
+                (Math.random() - 0.5) * 2
+            );
+            
+            particles.push({
+                mesh: particle,
+                velocity: velocity,
+                life: 1.0
+            });
+            
+            this.mesh.add(particle);
+        }
+        
+        // Animate impact particles
+        const animate = () => {
+            let activeParticles = 0;
+            
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const particle = particles[i];
+                
+                if (particle.life <= 0) {
+                    this.mesh.remove(particle.mesh);
+                    particle.mesh.geometry.dispose();
+                    particle.mesh.material.dispose();
+                    particles.splice(i, 1);
+                    continue;
+                }
+                
+                // Update position
+                particle.mesh.position.add(particle.velocity.multiplyScalar(0.1));
+                
+                // Update life and opacity
+                particle.life -= 0.1;
+                particle.mesh.material.opacity = particle.life * 0.8;
+                
+                activeParticles++;
+            }
+            
+            if (activeParticles > 0) {
+                requestAnimationFrame(animate);
+            }
+        };
+        
+        animate();
+    }
+
+    animateParticles() {
+        const animate = () => {
+            if (!this.particles) return; // Check if tower has been cleaned up
+            
+            for (const particle of this.particles) {
+                // Update particle position in a circular pattern
+                particle.angle += particle.speed * 0.02;
+                
+                const x = Math.cos(particle.angle) * particle.radius;
+                const z = Math.sin(particle.angle) * particle.radius;
+                const y = Math.sin(particle.angle * 2) * particle.verticalOffset + 0.5;
+                
+                particle.mesh.position.set(x, y, z);
+            }
+            
+            requestAnimationFrame(animate);
+        };
+        
+        animate();
+    }
+
+    cleanup() {
+        // ... existing cleanup code ...
+        
+        // Cleanup particles
+        if (this.particles) {
+            for (const particle of this.particles) {
+                this.mesh.remove(particle.mesh);
+                particle.mesh.geometry.dispose();
+                particle.mesh.material.dispose();
+            }
+            this.particles = null;
+            
+            if (this.particleGeometry) {
+                this.particleGeometry.dispose();
+            }
+            if (this.particleMaterial) {
+                this.particleMaterial.dispose();
+            }
+        }
     }
     
     // Set selection state

@@ -19,6 +19,7 @@ import { Enemy } from '../Enemy.js';
 import { Tower } from '../Tower.js';
 import { Pathfinding } from '../Pathfinding.js';
 import { EnvironmentManager } from '../managers/EnvironmentManager.js';
+import { GameSummaryUI } from '../ui/GameSummaryUI.js';
 
 export class MultiplayerGame {
     constructor(gameController = null) {
@@ -30,6 +31,7 @@ export class MultiplayerGame {
         // UI systems
         this.loadingScreen = null;
         this.spectatorOverlay = null;
+        this.gameSummaryUI = null;  // Add game summary UI
         
         // Game systems
         this.multiplayerScene = null;
@@ -263,6 +265,19 @@ export class MultiplayerGame {
                         enemies: opponentData.enemies || [],
                         path: opponentData.path
                     });
+
+                    // Check for game over conditions
+                    const localPlayerData = data.players[this.localPlayerId];
+                    if (localPlayerData) {
+                        // Game over if either player's health reaches 0
+                        if (localPlayerData.health <= 0 || opponentData.health <= 0) {
+                            this.handleGameOver(localPlayerData, opponentData);
+                        }
+                        // Victory if reached wave 10 (or your desired victory condition)
+                        else if (localPlayerData.wave >= 10) {
+                            this.handleGameOver(localPlayerData, opponentData, true);
+                        }
+                    }
                 }
             }
         });
@@ -1088,6 +1103,9 @@ export class MultiplayerGame {
             this.turnIndicatorUI = new TurnIndicatorUI();
             this.turnIndicatorUI.show();
             
+            // Initialize game summary UI
+            this.gameSummaryUI = new GameSummaryUI();
+            
             // Removed: Start Defense callback setup - defense phase starts automatically via server
             
             // Hide tower selection UI initially (show only during defense phase)
@@ -1678,6 +1696,30 @@ export class MultiplayerGame {
     }
 
     /**
+     * Handle game over conditions
+     */
+    handleGameOver(localPlayerData, opponentData, isVictory = false) {
+        // Stop the game
+        this.stop();
+
+        // Determine if local player won (in case of health-based game over)
+        if (!isVictory) {
+            isVictory = localPlayerData.health > 0 && opponentData.health <= 0;
+        }
+
+        // Get final stats
+        const stats = {
+            wave: localPlayerData.wave,
+            score: localPlayerData.score,
+            money: localPlayerData.money,
+            health: localPlayerData.health
+        };
+
+        // Show game summary
+        this.gameSummaryUI.show(stats, isVictory);
+    }
+
+    /**
      * Cleanup all multiplayer resources
      */
     cleanup() {
@@ -1710,6 +1752,10 @@ export class MultiplayerGame {
         if (this.turnIndicatorUI) {
             this.turnIndicatorUI.cleanup?.();
             this.turnIndicatorUI = null;
+        }
+        if (this.gameSummaryUI) {
+            this.gameSummaryUI.cleanup();
+            this.gameSummaryUI = null;
         }
         
         if (this.spectatorOverlay) {

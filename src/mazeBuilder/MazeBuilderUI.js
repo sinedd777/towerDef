@@ -182,7 +182,6 @@ export class MazeBuilderUI {
             <div style="margin-bottom: 10px; font-weight: bold; font-size: 16px;">Controls</div>
             <div>• Press T to pick up next shape</div>
             <div>• Press R to rotate shape</div>
-            <div>• Click to place shape</div>
             <div style="margin-top: 10px; font-style: italic;">Block enemy paths strategically</div>
         `;
 
