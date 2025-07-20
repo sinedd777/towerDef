@@ -117,6 +117,11 @@ export class TurnIndicatorUI {
     }
 
     showPhaseTransition(newPhase) {
+        // Clear any waiting messages when defense phase starts
+        if (newPhase === 'defense') {
+            this.clearWaitingMessages();
+        }
+        
         // Create transition overlay
         const overlay = document.createElement('div');
         overlay.style.cssText = `
@@ -165,6 +170,36 @@ export class TurnIndicatorUI {
         if (this.container) {
             this.container.style.display = 'none';
         }
+    }
+
+    clearWaitingMessages() {
+        // Remove the waiting for players element
+        const waitingElement = document.getElementById('waiting-for-players');
+        if (waitingElement) {
+            waitingElement.remove();
+            console.log('🔄 Waiting for players message cleared');
+        }
+        
+        // Also remove any other waiting messages by content
+        const waitingSelectors = [
+            '[id*="waiting"]',
+            '[class*="waiting"]',
+            'div',
+            'p'
+        ];
+        
+        waitingSelectors.forEach(selector => {
+            const elements = document.querySelectorAll(selector);
+            elements.forEach(el => {
+                if (el.textContent && (
+                    el.textContent.includes('Waiting for other players') || 
+                    el.textContent.includes('Your maze is complete')
+                )) {
+                    el.remove();
+                    console.log('🔄 Waiting element removed by content:', el.textContent.slice(0, 50));
+                }
+            });
+        });
     }
 
     cleanup() {

@@ -166,6 +166,9 @@ export class MultiplayerGame {
         
         // === GAME PHASE EVENTS ===
         this.eventHub.on('game:defense_started', (data) => {
+            // CRITICAL: Aggressive cleanup first - multiple approaches
+            this.forceCleanupWaitingMessages();
+            
             // CRITICAL: Update turn state first for tower operations
             if (data.currentTurn && this.localPlayerId) {
                 // Update turn indicator UI
@@ -1239,39 +1242,96 @@ export class MultiplayerGame {
     }
 
     /**
+     * Force cleanup of all waiting messages - multiple approaches
+     */
+    forceCleanupWaitingMessages() {
+        console.log('🧹 FORCE CLEANUP: Starting aggressive waiting message cleanup...');
+        
+        // Method 1: MazeBuilderUI method
+        if (this.mazeBuilderUI && this.mazeBuilderUI.hideWaitingMessage) {
+            this.mazeBuilderUI.hideWaitingMessage();
+            console.log('🧹 FORCE CLEANUP: MazeBuilderUI.hideWaitingMessage() called');
+        }
+        
+        // Method 2: Direct removal by ID
+        const waitingElement = document.getElementById('waiting-for-players');
+        if (waitingElement) {
+            waitingElement.remove();
+            console.log('🧹 FORCE CLEANUP: Removed waiting-for-players by ID');
+        }
+        
+        // Method 3: Search all elements by content
+        const allElements = document.querySelectorAll('*');
+        let removedCount = 0;
+        allElements.forEach(el => {
+            const text = el.textContent || '';
+            if (text.includes('Waiting for other players') || 
+                text.includes('Your maze is complete') ||
+                text.includes('finish...')) {
+                // Check if it's a container element (has the waiting message structure)
+                if (el.innerHTML && (el.innerHTML.includes('spinner') || text.includes('complete'))) {
+                    el.remove();
+                    removedCount++;
+                    console.log('🧹 FORCE CLEANUP: Removed element by content:', text.slice(0, 50));
+                }
+            }
+        });
+        
+        // Method 4: Remove by common selectors
+        const selectors = [
+            '#waiting-for-players',
+            '[id*="waiting"]',
+            '[class*="waiting"]',
+            'div:has(.spinner)', // If browser supports :has()
+            'div[style*="position: fixed"]'
+        ];
+        
+        selectors.forEach(selector => {
+            try {
+                const elements = document.querySelectorAll(selector);
+                elements.forEach(el => {
+                    const text = el.textContent || '';
+                    if (text.includes('Waiting for other players') || 
+                        text.includes('Your maze is complete') ||
+                        el.id === 'waiting-for-players') {
+                        el.remove();
+                        console.log('🧹 FORCE CLEANUP: Removed element by selector:', selector);
+                    }
+                });
+            } catch (e) {
+                // Some selectors might not work in all browsers
+                console.log('🧹 FORCE CLEANUP: Selector failed:', selector);
+            }
+        });
+        
+        console.log(`🧹 FORCE CLEANUP: Completed - removed ${removedCount} elements`);
+        
+        // Schedule additional cleanup in case something recreates the element
+        setTimeout(() => {
+            const laterElement = document.getElementById('waiting-for-players');
+            if (laterElement) {
+                laterElement.remove();
+                console.log('🧹 DELAYED CLEANUP: Removed waiting element that appeared later');
+            }
+        }, 100);
+        
+        setTimeout(() => {
+            const laterElement = document.getElementById('waiting-for-players');
+            if (laterElement) {
+                laterElement.remove();
+                console.log('🧹 DELAYED CLEANUP 2: Removed waiting element that appeared later');
+            }
+        }, 500);
+    }
+
+    /**
      * Automatic transition to defense phase (triggered by server)
      */
     transitionToDefensePhase() {
         console.log('🔄 Transitioning to defense phase automatically...');
         
-        // FORCE hide waiting message - comprehensive approach
-        console.log('🔄 Force hiding waiting messages...');
-        
-        // Method 1: MazeBuilderUI method
-        if (this.mazeBuilderUI && this.mazeBuilderUI.hideWaitingMessage) {
-            this.mazeBuilderUI.hideWaitingMessage();
-            console.log('🔄 Waiting message hidden via MazeBuilderUI');
-        }
-        
-        // Method 2: Direct DOM cleanup (backup) - more comprehensive
-        const waitingSelectors = [
-            '#waiting-for-players',
-            '.waiting-message', 
-            '[id*="waiting"]',
-            '[class*="waiting"]'
-        ];
-        
-        waitingSelectors.forEach(selector => {
-            const elements = document.querySelectorAll(selector);
-            elements.forEach(el => {
-                if (el.textContent.includes('Waiting for other players') || 
-                    el.textContent.includes('Your maze is complete') ||
-                    el.id === 'waiting-for-players') {
-                    el.remove();
-                    console.log('🔄 Waiting element removed:', selector);
-                }
-            });
-        });
+        // Use our new aggressive cleanup method
+        this.forceCleanupWaitingMessages();
         
         // Hide maze builder UI
         if (this.mazeBuilderUI) {
