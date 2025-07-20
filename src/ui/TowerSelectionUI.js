@@ -15,6 +15,12 @@ export class TowerSelectionUI {
             area: '/kenney_tower-defense-kit/Previews/snow-detail-crystal-large.png'
         };
         
+        // Listen for money updates
+        this.handleMoneyUpdate = () => {
+            this.updateTowerMenu();
+        };
+        document.addEventListener('moneyUpdated', this.handleMoneyUpdate);
+        
         this.initializeStyles();
         this.createTowerSelectionUI();
     }
@@ -306,9 +312,9 @@ export class TowerSelectionUI {
         const slots = document.querySelectorAll('.tower-slot');
         slots.forEach(slot => {
             const towerId = slot.dataset.towerId;
-            const tower = this.selectedTowerData;
-            if (tower && tower.id === towerId) {
-                this.updateSlotAffordability(slot, tower);
+            const towerConfig = TOWER_TYPES[towerId.toUpperCase()];
+            if (towerConfig) {
+                this.updateSlotAffordability(slot, { id: towerId, cost: towerConfig.cost });
             }
         });
     }
@@ -338,6 +344,17 @@ export class TowerSelectionUI {
         const menu = document.getElementById('basic-tower-menu');
         if (menu) {
             menu.style.display = 'none';
+        }
+    }
+
+    cleanup() {
+        // Remove event listener
+        document.removeEventListener('moneyUpdated', this.handleMoneyUpdate);
+        
+        // Remove any DOM elements if needed
+        const menu = document.getElementById('basic-tower-menu');
+        if (menu) {
+            menu.remove();
         }
     }
 } 

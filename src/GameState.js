@@ -37,12 +37,16 @@ export class GameState {
     addMoney(amount) {
         this.money += amount;
         this.updateHUD();
+        // Dispatch money update event
+        document.dispatchEvent(new CustomEvent('moneyUpdated', { detail: { money: this.money } }));
     }
     
     spendMoney(amount) {
         if (this.money >= amount) {
             this.money -= amount;
             this.updateHUD();
+            // Dispatch money update event
+            document.dispatchEvent(new CustomEvent('moneyUpdated', { detail: { money: this.money } }));
             return true;
         }
         return false;
