@@ -304,7 +304,7 @@ class GameState {
                 health: this.getEnemyHealth(this.currentWave),
                 maxHealth: this.getEnemyHealth(this.currentWave),
                 speed: this.getEnemySpeed(this.currentWave),
-                position: { x: mapPos.x - 10, y: 0, z: mapPos.z - 10 }, // Start position
+                position: { x: mapPos.x - 10, y: 0.5, z: mapPos.z - 10 }, // Start position
                 path: this.generateEnemyPath(playerId),
                 pathProgress: 0,
                 reward: this.getEnemyReward(this.currentWave),
@@ -321,8 +321,8 @@ class GameState {
     generateEnemyPath(playerId) {
         // Generate path through player's maze
         const mapPos = this.getPlayerMapPosition(playerId);
-        const startPos = { x: mapPos.x - 10, y: 0, z: mapPos.z - 10 };
-        const endPos = { x: mapPos.x + 10, y: 0, z: mapPos.z + 10 };
+        const startPos = { x: mapPos.x - 10, y: 0.5, z: mapPos.z - 10 };
+        const endPos = { x: mapPos.x + 10, y: 0.5, z: mapPos.z + 10 };
         
         // Simple fallback path - this will be replaced by proper A* pathfinding
         return [startPos, endPos];

@@ -323,7 +323,7 @@ export class MultiplayerGame {
                     } else {
                         // Convert simple {x, z} to position format
                         return {
-                            position: new THREE.Vector3(waypoint.x, 0.1, waypoint.z),
+                            position: new THREE.Vector3(waypoint.x, 0.5, waypoint.z),
                             x: waypoint.x,
                             z: waypoint.z
                         };
@@ -344,7 +344,7 @@ export class MultiplayerGame {
                 if (data.enemy.position) {
                     const newPosition = {
                         x: data.enemy.position.x,
-                        y: data.enemy.position.y || 0.1,
+                        y: data.enemy.position.y || 0.5,
                         z: data.enemy.position.z
                     };
                     enemy.mesh.position.set(newPosition.x, newPosition.y, newPosition.z);
@@ -639,7 +639,7 @@ export class MultiplayerGame {
                     } else {
                         // Convert simple {x, z} to position format
                         const converted = {
-                            position: new THREE.Vector3(waypoint.x, 0.1, waypoint.z),
+                            position: new THREE.Vector3(waypoint.x, 0.5, waypoint.z),
                             x: waypoint.x,
                             z: waypoint.z
                         };

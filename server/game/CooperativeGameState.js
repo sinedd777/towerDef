@@ -394,7 +394,7 @@ class CooperativeGameState {
             health: enemyHealth,
             maxHealth: enemyHealth,
             speed: enemySpeed,
-            position: { x: spawnPoint.x, y: 0, z: spawnPoint.z },
+            position: { x: spawnPoint.x, y: 0.5, z: spawnPoint.z },
             path: enemyPath,
             pathProgress: 0,
             reward: this.getEnemyReward(this.sharedResources.wave),
@@ -417,8 +417,8 @@ class CooperativeGameState {
     generateEnemyPath(spawnPoint) {
         // Simple fallback path from spawn to exit - will be replaced by A* pathfinding
         return [
-            { x: spawnPoint.x, y: 0, z: spawnPoint.z },
-            { x: this.exitPoint.x, y: 0, z: this.exitPoint.z }
+            { x: spawnPoint.x, y: 0.5, z: spawnPoint.z },
+            { x: this.exitPoint.x, y: 0.5, z: this.exitPoint.z }
         ];
     }
     

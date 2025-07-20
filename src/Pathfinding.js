@@ -108,9 +108,10 @@ export class Pathfinding {
     }
 
     // Find path using A* algorithm
-    findPath(start, end, obstacles) {
-        // Store obstacles for path reconstruction
+    findPath(start, end, obstacles, yCoordinate = 0.1) {
+        // Store obstacles and y-coordinate for path reconstruction
         this.currentObstacles = obstacles;
+        this.yCoordinate = yCoordinate;
         
         const startNode = new Node(start.x, start.z);
         const endNode = new Node(end.x, end.z);
@@ -185,7 +186,7 @@ export class Pathfinding {
         
         while (current) {
             // Center waypoints in grid cells instead of placing on grid intersections
-            rawPath.unshift(new THREE.Vector3(current.x, 0.1, current.z));
+            rawPath.unshift(new THREE.Vector3(current.x, this.yCoordinate || 0.1, current.z));
             current = current.parent;
         }
         

@@ -55,6 +55,14 @@ export class Enemy {
         this.activeEffects = new Map();
         this.baseDamageMultiplier = 1.0;
         
+        // UFO beam system
+        this.beamMesh = null;
+        this.beamVisible = false;
+        this.lastBeamTime = 0;
+        this.nextBeamTime = Date.now() + (Math.random() * 5000) + 2000; // Random delay 2-7 seconds
+        this.beamDuration = 2000; // Beam shows for 2 seconds
+        this.isBeamLoaded = false;
+        
         // Create enemy mesh with UFO model
         this.mesh = new THREE.Group();
         this.mesh.castShadow = true;
@@ -70,6 +78,19 @@ export class Enemy {
         }).catch((error) => {
             console.error('Failed to load UFO model, using fallback:', error);
             this.createFallbackMesh(wave);
+        });
+
+        // Load UFO beam model
+        this.loadBeamModel().then((beamModel) => {
+            if (beamModel) {
+                this.beamMesh = beamModel;
+                this.beamMesh.position.set(0, -0.8, 0); // Position under the UFO
+                this.beamMesh.visible = false; // Start hidden
+                this.mesh.add(this.beamMesh);
+                this.isBeamLoaded = true;
+            }
+        }).catch((error) => {
+            console.error('Failed to load UFO beam model:', error);
         });
 
         // Create debug label
@@ -140,11 +161,11 @@ export class Enemy {
         if (this.isModelLoaded && this.mesh.children.length > 0) {
             // Rotate the UFO around Y axis for floating effect
             this.mesh.rotation.y += 0.02;
-            
-            // Add subtle bobbing motion
-            const time = Date.now() * 0.001;
-            this.mesh.position.y = 0.1 + Math.sin(time * 2) * 0.05;
+            // Removed bobbing animation to fix movement issues
         }
+        
+        // Update beam system
+        this.updateBeamSystem();
         
         // Update debug info
         this.updateDebugInfo();
@@ -295,7 +316,7 @@ export class Enemy {
             
             // Minimal avoidance offset that doesn't break curves
             const avoidanceOffset = this.avoidanceForce.clone().multiplyScalar(0.05);
-            avoidanceOffset.y = 0; // Keep Y level
+            avoidanceOffset.y = 0; // Keep Y level for horizontal avoidance only
             targetPos.add(avoidanceOffset);
             
             // Smooth interpolation to target position
@@ -511,6 +532,12 @@ export class Enemy {
         
         // Clear all status effects
         this.activeEffects.clear();
+        
+        // Clean up beam
+        if (this.beamMesh) {
+            this.mesh.remove(this.beamMesh);
+            this.beamMesh = null;
+        }
     }
     
     async loadUFOModel(wave) {
@@ -535,6 +562,107 @@ export class Enemy {
         } catch (error) {
             console.error('Failed to load UFO model for wave', wave, ':', error);
             return null;
+        }
+    }
+
+    async loadBeamModel() {
+        try {
+            const beamModel = await assetManager.loadAsset('enemies', 'ufo-beam');
+            if (beamModel) {
+                // Set initial beam scale (will be dynamically scaled based on height)
+                beamModel.scale.set(1.0, 1.0, 1.0); // Start with base scale
+                
+                // Add glowing effect to beam
+                beamModel.traverse((child) => {
+                    if (child.isMesh) {
+                        child.layers.set(0);
+                        
+                        if (Array.isArray(child.material)) {
+                            child.material = child.material.map(mat => this.enhanceBeamMaterial(mat.clone()));
+                        } else {
+                            child.material = this.enhanceBeamMaterial(child.material.clone());
+                        }
+                    }
+                });
+                return beamModel;
+            }
+        } catch (error) {
+            console.error('Failed to load UFO beam model:', error);
+            return null;
+        }
+    }
+
+    enhanceBeamMaterial(material) {
+        // Make beam glow with energy effect
+        material.transparent = true;
+        material.opacity = 0.8;
+        material.emissive = new THREE.Color(0x00ffff); // Cyan glow
+        material.emissiveIntensity = 0.6;
+        
+        if (material.color) {
+            material.color.setHex(0x88ffff); // Light cyan color
+        }
+        
+        material.needsUpdate = true;
+        return material;
+    }
+
+    updateBeamSystem() {
+        if (!this.isBeamLoaded || !this.beamMesh) return;
+        
+        const currentTime = Date.now();
+        
+        // Check if it's time to show the beam
+        if (!this.beamVisible && currentTime >= this.nextBeamTime) {
+            this.showBeam();
+        }
+        
+        // Check if it's time to hide the beam
+        if (this.beamVisible && currentTime >= this.lastBeamTime + this.beamDuration) {
+            this.hideBeam();
+        }
+        
+        // Add beam animation when visible
+        if (this.beamVisible && this.beamMesh) {
+            const time = currentTime * 0.003;
+            
+            // Calculate height-based scale (10% to 60% range)
+            const enemyHeight = this.mesh.position.y;
+            const minScale = 0.1; // 10%
+            const maxScale = 0.6; // 60%
+            const heightRange = 2.0; // Expected height range (0 to 2.0)
+            
+            // Map enemy height to scale range
+            const normalizedHeight = Math.min(Math.max(enemyHeight / heightRange, 0), 1);
+            const heightBasedScale = minScale + (normalizedHeight * (maxScale - minScale));
+            
+            // Pulse effect (applied on top of height-based scale)
+            const pulse = 0.8 + Math.sin(time * 4) * 0.2;
+            
+            // Apply both height-based scaling and pulse effect
+            const finalScale = heightBasedScale * pulse;
+            this.beamMesh.scale.set(finalScale * 1.5, finalScale * 2.0, finalScale * 1.5);
+            
+            // Slight rotation for energy effect
+            this.beamMesh.rotation.y += 0.05;
+        }
+    }
+
+    showBeam() {
+        if (this.beamMesh) {
+            this.beamMesh.visible = true;
+            this.beamVisible = true;
+            this.lastBeamTime = Date.now();
+            
+            // Schedule next beam appearance (random 3-7 seconds after this beam ends)
+            this.nextBeamTime = this.lastBeamTime + this.beamDuration + (Math.random() * 4000) + 3000;
+        }
+    }
+
+    hideBeam() {
+        if (this.beamMesh) {
+            this.beamMesh.visible = false;
+            this.beamVisible = false;
         }
     }
 

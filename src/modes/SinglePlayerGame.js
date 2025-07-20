@@ -93,8 +93,8 @@ export class SinglePlayerGame {
         this.towers = [];
         
         // Game constants
-        this.enemyStartPosition = new THREE.Vector3(-8, 0.1, -8);
-        this.enemyEndPosition = new THREE.Vector3(8, 0.1, 8);
+        this.enemyStartPosition = new THREE.Vector3(-8, 1.0, -8);
+        this.enemyEndPosition = new THREE.Vector3(8, 1.0, 8);
         this.lastEnemySpawn = 0;
         this.enemySpawnInterval = 2000;
         
@@ -201,7 +201,8 @@ export class SinglePlayerGame {
         const currentPath = this.pathfinding.findPath(
             { x: this.enemyStartPosition.x, z: this.enemyStartPosition.z },
             { x: this.enemyEndPosition.x, z: this.enemyEndPosition.z },
-            this.getAllObstacles()
+            this.getAllObstacles(),
+            1.0  // Use y=1.0 for single player enemies
         );
         
         this.inputManager = new InputManager(
@@ -294,7 +295,8 @@ export class SinglePlayerGame {
         const initialPath = this.pathfinding.findPath(
             { x: this.enemyStartPosition.x, z: this.enemyStartPosition.z },
             { x: this.enemyEndPosition.x, z: this.enemyEndPosition.z },
-            obstacles
+            obstacles,
+            1.0  // Use y=1.0 for single player enemies
         );
 
         // Check if there's a valid path before starting defense phase
@@ -360,7 +362,8 @@ export class SinglePlayerGame {
         const currentPath = this.pathfinding.findPath(
             { x: this.enemyStartPosition.x, z: this.enemyStartPosition.z },
             { x: this.enemyEndPosition.x, z: this.enemyEndPosition.z },
-            obstacles
+            obstacles,
+            1.0  // Use y=1.0 for single player enemies
         );
         this.updatePathVisualization(currentPath);
         
@@ -443,7 +446,8 @@ export class SinglePlayerGame {
             const currentPath = this.pathfinding.findPath(
                 { x: this.enemyStartPosition.x, z: this.enemyStartPosition.z },
                 { x: this.enemyEndPosition.x, z: this.enemyEndPosition.z },
-                obstacles
+                obstacles,
+                1.0  // Use y=1.0 for single player enemies
             );
             this.updatePathVisualization(currentPath);
         }
@@ -457,7 +461,8 @@ export class SinglePlayerGame {
             const path = this.pathfinding.findPath(
                 { x: this.enemyStartPosition.x, z: this.enemyStartPosition.z },
                 { x: this.enemyEndPosition.x, z: this.enemyEndPosition.z },
-                obstacles
+                obstacles,
+                1.0  // Use y=1.0 for single player enemies
             );
             
             // Only spawn enemy and update visualization if a valid path exists
