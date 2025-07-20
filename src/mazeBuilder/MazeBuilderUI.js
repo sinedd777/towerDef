@@ -26,9 +26,9 @@ export class MazeBuilderUI {
         this.container.id = 'card-container';
         this.container.style.cssText = `
             position: fixed;
-            top: 50%;
-            right: 50px;
-            transform: translateY(-50%);
+            top: 0px;
+            right: 20px;
+            transform: scale(0.8);
             perspective: 1000px;
             z-index: 1000;
             font-family: Arial, sans-serif;
@@ -50,7 +50,7 @@ export class MazeBuilderUI {
                 position: absolute;
                 width: 240px;
                 height: 336px;
-                background: white;
+                background: #f0f0f0;
                 border-radius: 12px;
                 box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
                 transform: translateZ(-${(i + 1) * 5}px) translateY(${(i + 1) * 2}px) translateX(${(i + 1) * 2}px);
@@ -67,7 +67,7 @@ export class MazeBuilderUI {
             position: relative;
             width: 240px;
             height: 336px;
-            background: white;
+            background: #f0f0f0;
             border-radius: 12px;
             box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
             transform-style: preserve-3d;
