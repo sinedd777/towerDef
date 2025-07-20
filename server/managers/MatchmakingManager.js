@@ -409,6 +409,8 @@ class MatchmakingManager {
                     });
                     
                     this.logger.info(`Player ${result.player.playerId} joined session ${match.sessionId} via matchmaking`);
+                } else {
+                    this.logger.error(`Failed to add player ${player.socketId} to session ${match.sessionId}:`, result.reason);
                 }
             }
         };

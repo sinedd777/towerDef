@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 
 export class MultiplayerInputManager {
-    constructor(multiplayerScene, camera, renderer, gameState, localPlayerId, networkManager) {
+    constructor(multiplayerScene, camera, renderer, gameState, localPlayerId, actionDispatcher) {
         this.multiplayerScene = multiplayerScene;
         this.camera = camera;
         this.renderer = renderer;
         this.gameState = gameState;
         this.localPlayerId = localPlayerId; // 'player1' or 'player2'
-        this.networkManager = networkManager;
+        this.actionDispatcher = actionDispatcher;  // NEW ARCHITECTURE: Use ActionDispatcher instead of NetworkManager
         
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
@@ -225,9 +225,9 @@ export class MultiplayerInputManager {
         // Convert to grid position
         const gridPos = this.multiplayerScene.worldToGrid(point, this.localPlayerId);
         
-        // Send placement to network manager
-        if (this.networkManager) {
-            this.networkManager.placeMazeBlock(gridPos, this.selectedShapeData);
+        // Send placement via ActionDispatcher (NEW ARCHITECTURE)
+        if (this.actionDispatcher) {
+            this.actionDispatcher.placeMazeShape(this.selectedShapeData, gridPos);
         }
         
         // Create visual representation locally (will be confirmed by server)
@@ -245,9 +245,9 @@ export class MultiplayerInputManager {
     placeTower(point) {
         console.log('Placing tower at:', point);
         
-        // Send placement to network manager
-        if (this.networkManager) {
-            this.networkManager.placeTower(point, this.selectedTowerData);
+        // Send placement via ActionDispatcher (NEW ARCHITECTURE)
+        if (this.actionDispatcher) {
+            this.actionDispatcher.placeTower(this.selectedTowerData.type, point);
         }
         
         // Create visual representation locally (will be confirmed by server)

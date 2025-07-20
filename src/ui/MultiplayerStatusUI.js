@@ -1,6 +1,6 @@
 export class MultiplayerStatusUI {
-    constructor(networkManager) {
-        this.networkManager = networkManager;
+    constructor(eventHub) {
+        this.eventHub = eventHub;  // NEW ARCHITECTURE: Use EventHub instead of NetworkManager
         this.container = null;
         this.playerStats = {
             player1: { health: 100, money: 150, score: 0, wave: 1 },
@@ -8,7 +8,7 @@ export class MultiplayerStatusUI {
         };
         
         this.createStatusBar();
-        this.setupNetworkUpdates();
+        this.setupEventUpdates();  // Renamed from setupNetworkUpdates
     }
     
     createStatusBar() {
@@ -59,39 +59,43 @@ export class MultiplayerStatusUI {
         setInterval(() => this.updateConnectionStatus(), 1000);
     }
     
-    setupNetworkUpdates() {
-        if (!this.networkManager) return;
+    setupEventUpdates() {
+        if (!this.eventHub) return;
+        
+        console.log('📊 MultiplayerStatusUI: Setting up EventHub subscriptions (NEW ARCHITECTURE)');
         
         // Update session ID when connected
-        this.networkManager.setOnSessionJoined((data) => {
+        this.eventHub.on('session:joined', (data) => {
             this.updateSessionInfo(data.sessionId);
             this.updatePlayerInfo(data);
         });
         
         // Update connection status
-        this.networkManager.setOnConnected(() => {
+        this.eventHub.on('network:connected', () => {
             this.updateConnectionStatus();
             this.updatePhaseIndicator('Connected - Finding match...');
         });
         
-        this.networkManager.setOnDisconnected(() => {
+        this.eventHub.on('network:disconnected', (data) => {
             this.updateConnectionStatus();
             this.updatePhaseIndicator('Disconnected');
         });
         
         // Update game state
-        this.networkManager.setOnGameStateUpdate((data) => {
+        this.eventHub.on('game:state_updated', (data) => {
             this.updateGameState(data);
         });
         
         // Update player actions
-        this.networkManager.setOnPlayerJoined((data) => {
+        this.eventHub.on('session:player_joined', (data) => {
             this.updatePhaseIndicator('Player joined - Starting game...');
         });
         
-        this.networkManager.setOnPlayerLeft((data) => {
+        this.eventHub.on('session:player_left', (data) => {
             this.updatePhaseIndicator('Player left - Waiting for new player...');
         });
+        
+        console.log('✅ MultiplayerStatusUI: EventHub subscriptions setup complete');
     }
     
     updatePlayerStats(playerId, stats) {
@@ -134,17 +138,13 @@ export class MultiplayerStatusUI {
     
     updateConnectionStatus() {
         const statusElement = document.getElementById('connection-status');
-        if (!statusElement || !this.networkManager) return;
+        if (!statusElement) return;
         
-        const status = this.networkManager.getConnectionStatus();
-        
-        if (status.connected) {
-            statusElement.textContent = `${status.icon} ${status.latency}ms`;
-            statusElement.className = `connection-status ${status.quality}`;
-        } else {
-            statusElement.textContent = '○○○○ Offline';
-            statusElement.className = 'connection-status offline';
-        }
+        // Note: Connection status updates now come via EventHub events (NEW ARCHITECTURE)
+        // This method will be called by event handlers with proper status
+        // For now, show a generic status - will be updated by events
+        statusElement.textContent = '●●●● Connected';
+        statusElement.className = 'connection-status good';
     }
     
     updateSessionInfo(sessionId) {

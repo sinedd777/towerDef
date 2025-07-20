@@ -1,8 +1,8 @@
 export class PrivateControlPanel {
-    constructor(playerId, gameState, networkManager) {
+    constructor(playerId, gameState, actionDispatcher) {
         this.playerId = playerId;
         this.gameState = gameState;
-        this.networkManager = networkManager;
+        this.actionDispatcher = actionDispatcher;  // NEW ARCHITECTURE: Use ActionDispatcher instead of NetworkManager
         this.container = null;
         this.currentPhase = 'building'; // building, defense
         
@@ -346,9 +346,11 @@ export class PrivateControlPanel {
     startDefensePhase() {
         console.log('Starting defense phase...');
         
-        // Notify network manager
-        if (this.networkManager) {
-            this.networkManager.startDefensePhase();
+        // Use ActionDispatcher (NEW ARCHITECTURE)
+        if (this.actionDispatcher) {
+            this.actionDispatcher.startDefensePhase();
+        } else {
+            console.error('❌ PrivateControlPanel: ActionDispatcher not available');
         }
         
         // Call callback
@@ -364,9 +366,11 @@ export class PrivateControlPanel {
         if (confirm('Are you sure you want to surrender? This will end the game.')) {
             console.log('Player surrendered');
             
-            // Notify network manager
-            if (this.networkManager) {
-                this.networkManager.sendPlayerAction('surrender', {});
+            // Use ActionDispatcher (NEW ARCHITECTURE)
+            if (this.actionDispatcher) {
+                this.actionDispatcher.surrender();
+            } else {
+                console.error('❌ PrivateControlPanel: ActionDispatcher not available');
             }
         }
     }

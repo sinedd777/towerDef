@@ -321,8 +321,8 @@ class GameState {
     generateEnemyPath(playerId) {
         // Generate path through player's maze
         const mapPos = this.getPlayerMapPosition(playerId);
-        const startPos = { x: mapPos.x - 10, z: mapPos.z - 10 };
-        const endPos = { x: mapPos.x + 10, z: mapPos.z + 10 };
+        const startPos = { x: mapPos.x - 10, y: 0, z: mapPos.z - 10 };
+        const endPos = { x: mapPos.x + 10, y: 0, z: mapPos.z + 10 };
         
         // Simple fallback path - this will be replaced by proper A* pathfinding
         return [startPos, endPos];
@@ -661,9 +661,13 @@ class GameState {
         const start = path[segmentIndex];
         const end = path[Math.min(segmentIndex + 1, path.length - 1)];
         
+        // Ensure Y coordinates exist to prevent NaN
+        const startY = start.y !== undefined ? start.y : 0;
+        const endY = end.y !== undefined ? end.y : 0;
+        
         return {
             x: start.x + (end.x - start.x) * segmentProgress,
-            y: start.y + (end.y - start.y) * segmentProgress,
+            y: startY + (endY - startY) * segmentProgress,
             z: start.z + (end.z - start.z) * segmentProgress
         };
     }

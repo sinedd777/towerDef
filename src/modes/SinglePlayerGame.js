@@ -91,7 +91,7 @@ export class SinglePlayerGame {
         // Initialize UI systems
         this.towerSelectionUI = new TowerSelectionUI(this.gameState);
         this.towerManagementUI = new TowerManagementUI(this.gameState, this.labelRenderer, this.camera);
-        this.mazeBuilderUI = new MazeBuilderUI(this.mazeState, this.gameState);
+                    this.mazeBuilderUI = new MazeBuilderUI(this.mazeState, this.gameState, false);  // false = single player mode
 
         // Setup UI callbacks
         this.setupUICallbacks();

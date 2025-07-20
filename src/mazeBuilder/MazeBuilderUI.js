@@ -1,10 +1,21 @@
 export class MazeBuilderUI {
-    constructor(mazeState) {
+    constructor(mazeState, gameState, isMultiplayer = false) {
         this.mazeState = mazeState;
+        this.gameState = gameState;
+        this.isMultiplayer = isMultiplayer;  // NEW: Track if this is multiplayer mode
+        this.container = null;
+        this.playingCard = null;
+        this.cardStack = null;
+        this.shapesCounter = null;
+        
+        // Callback for single player mode defense phase start
+        this.onStartDefenseCallback = null;
+        
         this.createPlayingCardInterface();
         this.updateCardDisplay();
     }
 
+    // RESTORED: setOnStartDefenseCallback method for single player compatibility
     setOnStartDefenseCallback(callback) {
         this.onStartDefenseCallback = callback;
     }
@@ -85,7 +96,7 @@ export class MazeBuilderUI {
         // Create shapes remaining counter
         this.createShapesCounter();
 
-        // Create start defense button
+        // Create start defense button (for single player mode)
         this.createStartButton();
 
         document.body.appendChild(this.container);
@@ -192,7 +203,10 @@ export class MazeBuilderUI {
     }
 
     createStartButton() {
-        // We no longer need the start button as defense phase starts automatically
+        // No Start Defense button needed in single player mode - auto-starts when shapes run out
+        // Only needed for multiplayer mode (but currently not used there either)
+        console.log('Skipping Start Defense button creation - automatic progression used');
+        return;
     }
 
     updateCardDisplay() {
@@ -201,18 +215,25 @@ export class MazeBuilderUI {
         // Update shapes counter
         this.shapesCounter.textContent = `Shapes remaining: ${shapesRemaining}`;
 
-        // Hide everything if no shapes remaining
+        // Hide UI if no shapes remaining
         if (shapesRemaining === 0) {
             this.cardStack.style.display = 'none';
             this.shapesCounter.style.display = 'none';
-            // Start defense phase automatically
-            if (this.onStartDefenseCallback) {
-                this.onStartDefenseCallback();
+            
+            if (this.isMultiplayer) {
+                // Show waiting message in multiplayer mode
+                this.showWaitingForOtherPlayer();
+            } else {
+                // In single player mode, automatically start defense phase
+                console.log('Single player shapes exhausted - automatically starting defense phase');
+                if (this.onStartDefenseCallback) {
+                    this.onStartDefenseCallback();
+                }
             }
             return;
         }
 
-        // Show everything
+        // Show everything if shapes available
         this.cardStack.style.display = 'block';
         this.shapesCounter.style.display = 'block';
 
@@ -222,6 +243,62 @@ export class MazeBuilderUI {
             this.updateShapeDisplay(currentShape);
         } else {
             this.clearShapeDisplay();
+        }
+    }
+
+    /**
+     * Show a waiting message when this player is done but others aren't
+     */
+    showWaitingForOtherPlayer() {
+        // Create or update waiting message
+        let waitingElement = document.getElementById('waiting-for-players');
+        if (!waitingElement) {
+            waitingElement = document.createElement('div');
+            waitingElement.id = 'waiting-for-players';
+            waitingElement.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(0, 0, 0, 0.8);
+                color: white;
+                padding: 20px;
+                border-radius: 10px;
+                text-align: center;
+                z-index: 1000;
+                font-family: Arial, sans-serif;
+            `;
+            document.body.appendChild(waitingElement);
+        }
+        
+        waitingElement.innerHTML = `
+            <h3>✅ Your maze is complete!</h3>
+            <p>Waiting for other players to finish...</p>
+            <div class="spinner" style="
+                border: 3px solid #f3f3f3;
+                border-top: 3px solid #3498db;
+                border-radius: 50%;
+                width: 30px;
+                height: 30px;
+                animation: spin 1s linear infinite;
+                margin: 10px auto;
+            "></div>
+            <style>
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            </style>
+        `;
+    }
+
+    /**
+     * Hide the waiting message (called when defense phase actually starts)
+     */
+    hideWaitingMessage() {
+        const waitingElement = document.getElementById('waiting-for-players');
+        if (waitingElement) {
+            waitingElement.remove();
         }
     }
 
@@ -371,6 +448,9 @@ export class MazeBuilderUI {
         if (this.container) {
             this.container.style.display = 'none';
         }
+        
+        // Hide waiting message when transitioning to defense
+        this.hideWaitingMessage();
     }
 
     // Show the maze builder UI

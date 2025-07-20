@@ -75,6 +75,7 @@ export class NetworkManager {
         });
         
         this.setupEventListeners();
+        this.setupDeferredEventListeners(); // Register any callbacks that were set before connect
         this.startPingMonitoring();
     }
     
@@ -141,6 +142,12 @@ export class NetworkManager {
             this.sessionId = data.sessionId;
             this.playerId = data.player.id;
             this.isHost = false;
+            
+            console.log('🏠 SESSION JOINED - Debug info:');
+            console.log('🏠 Session ID:', data.sessionId);
+            console.log('🏠 Player ID:', data.player.id);
+            console.log('🏠 Socket rooms:', Array.from(this.socket.rooms || []));
+            
             if (this.onSessionJoined) this.onSessionJoined(data);
         });
         
@@ -393,33 +400,36 @@ export class NetworkManager {
         });
     }
     
-    startDefensePhase() {
-        if (!this.socket || !this.sessionId) {
-            console.error('Cannot start defense phase - not in session');
+    // Removed: startDefensePhase() method - no longer needed in multiplayer
+    // Defense phase starts automatically when server detects all shapes are placed
+
+    setOnDefensePhaseStarted(callback) {
+        // Store callback for when socket connects
+        this.onDefenseStarted = callback;
+        
+        if (!this.socket) {
+            console.log('🔧 NetworkManager: Socket not ready, will register defense listener on connect');
             return;
         }
 
-        this.socket.emit('game:start_defense', {
-            sessionId: this.sessionId,
-            playerId: this.playerId,
-            ready: true
-        });
-    }
-
-    setOnDefensePhaseStarted(callback) {
-        if (!this.socket) return;
-
-        this.socket.on('game:defense_started', (data) => {
-            if (callback) callback(data);
-        });
+        // Event listener is now registered in setupDeferredEventListeners() after socket connects
+        
+        console.log('✅ NetworkManager: game:defense_started listener registered');
     }
 
     setOnEnemySpawned(callback) {
-        if (!this.socket) return;
+        // Store callback for when socket connects
+        this.onEnemySpawned = callback;
+        
+        console.log('🔧 NetworkManager: setOnEnemySpawned callback registered');
+        if (!this.socket) {
+            console.warn('⚠️ NetworkManager: No socket available - will register enemy spawn handler on connect');
+            return;
+        }
 
-        this.socket.on('game:enemy_spawned', (data) => {
-            if (callback) callback(data);
-        });
+        // Event listener is now registered in setupDeferredEventListeners() after socket connects
+        
+        console.log('✅ NetworkManager: game:enemy_spawned event listener attached');
     }
 
     // Cooperative mode event handlers
@@ -439,17 +449,6 @@ export class NetworkManager {
             // Also trigger general game state update
             if (this.onGameStateUpdate) {
                 this.onGameStateUpdate(data);
-            }
-        });
-    }
-
-    setOnDefenseStarted(callback) {
-        this.onDefenseStarted = callback;
-        if (!this.socket) return;
-
-        this.socket.on('game:defense_started', (data) => {
-            if (this.onDefenseStarted) {
-                this.onDefenseStarted(data);
             }
         });
     }
@@ -520,11 +519,71 @@ export class NetworkManager {
     // Ping monitoring for connection quality
     startPingMonitoring() {
         this.pingInterval = setInterval(() => {
-            if (this.isConnected) {
+            if (this.socket && this.isConnected) {
                 this.lastPingTime = Date.now();
                 this.socket.emit('ping', this.lastPingTime);
             }
-        }, 2000); // Ping every 2 seconds
+        }, 5000); // Ping every 5 seconds
+    }
+
+    // Setup event listeners that were registered before socket connection
+    setupDeferredEventListeners() {
+        console.log('🔧 NetworkManager: Setting up deferred event listeners');
+        
+        // Defense phase handler
+        if (this.onDefenseStarted) {
+            console.log('🔧 NetworkManager: Registering deferred defense started listener');
+            this.socket.on('game:defense_started', (data) => {
+                console.log('📨 ===== DEFENSE STARTED EVENT RECEIVED =====');
+                console.log('📨 Raw event data:', data);
+                console.log('📨 Event timestamp:', data.timestamp);
+                console.log('📨 Callback available:', !!this.onDefenseStarted);
+                
+                if (this.onDefenseStarted) {
+                    console.log('📨 Calling defense started callback...');
+                    this.onDefenseStarted(data);
+                    console.log('📨 Defense started callback completed');
+                } else {
+                    console.error('❌ No callback registered for defense started event!');
+                }
+                console.log('📨 ===== DEFENSE STARTED EVENT PROCESSED =====');
+            });
+            
+            // DEBUG: Test if socket can receive ANY room events
+            this.socket.on('test_room_event', (data) => {
+                console.log('🧪 TEST: Received room event!', data);
+            });
+        }
+        
+        // Enemy spawn handler
+        if (this.onEnemySpawned) {
+            console.log('🔧 NetworkManager: Registering deferred enemy spawn listener');
+            this.socket.on('game:enemy_spawned', (data) => {
+                console.log('📨 ===== ENEMY SPAWN EVENT RECEIVED =====');
+                console.log('📨 NetworkManager: Received game:enemy_spawned event');
+                console.log('📨 Event timestamp:', data.timestamp);
+                console.log('📨 Enemy data received:', {
+                    id: data.enemy?.id,
+                    type: data.enemy?.type,
+                    health: data.enemy?.health,
+                    position: data.enemy?.position,
+                    pathLength: data.enemy?.path ? data.enemy.path.length : 'none'
+                });
+                console.log('📨 Raw data:', data);
+                
+                if (this.onEnemySpawned) {
+                    console.log('🎯 NetworkManager: Calling enemy spawn callback with data');
+                    this.onEnemySpawned(data);
+                    console.log('✅ NetworkManager: Enemy spawn callback completed');
+                } else {
+                    console.warn('⚠️ NetworkManager: No callback provided for enemy spawn');
+                }
+                console.log('📨 ===== ENEMY SPAWN EVENT PROCESSED =====');
+            });
+        }
+    }
+
+    stopPingMonitoring() {
     }
     
     // Update connection quality based on latency

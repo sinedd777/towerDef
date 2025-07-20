@@ -2,6 +2,9 @@ import { LoadingScreen } from '../ui/LoadingScreen.js';
 import { SinglePlayerGame } from '../modes/SinglePlayerGame.js';
 import { MultiplayerGame } from '../modes/MultiplayerGame.js';
 import { GameModeSelector } from '../ui/GameModeSelector.js';
+import { GameController } from './GameController.js';
+
+console.log('🎮 GameModeManager: MultiplayerGame imported successfully:', !!MultiplayerGame);
 
 export class GameModeManager {
     constructor() {
@@ -9,6 +12,9 @@ export class GameModeManager {
         this.singlePlayerGame = null;
         this.multiplayerGame = null;
         this.currentGameMode = null;
+        
+        // Central controller for multiplayer (NEW ARCHITECTURE)
+        this.gameController = null;
         
         // UI components
         this.gameModeSelector = null;
@@ -108,8 +114,17 @@ export class GameModeManager {
             // Cleanup any existing games
             this.cleanup();
             
-            // Create multiplayer game instance
-            this.multiplayerGame = new MultiplayerGame();
+            console.log('🔧 GameModeManager: Creating GameController (NEW ARCHITECTURE)...');
+            
+            // Create central game controller (NEW ARCHITECTURE)
+            this.gameController = new GameController();
+            
+            console.log('🔧 GameModeManager: About to create MultiplayerGame instance...');
+            
+            // Create multiplayer game instance with GameController
+            this.multiplayerGame = new MultiplayerGame(this.gameController);
+            
+            console.log('✅ GameModeManager: MultiplayerGame instance created with GameController!', !!this.multiplayerGame);
             
             // Set up callback for switching to single player from error dialog
             this.multiplayerGame.setOnSwitchToSinglePlayer(() => {
@@ -131,7 +146,34 @@ export class GameModeManager {
                 }
             };
             
-            // Initialize multiplayer with matchmaking
+            // Initialize GameController connection first (NEW ARCHITECTURE)
+            console.log('🎮 GameModeManager: Initializing GameController connection...');
+            await this.gameController.initializeMultiplayer(this.loadingScreen, statusCallbacks);
+            
+            // Setup matchmaking callbacks through EventHub (NEW ARCHITECTURE)
+            this.gameController.getEventHub().on('matchmaking:update', (status) => {
+                console.log('🎮 GameModeManager: Matchmaking status update:', status);
+                this.gameModeSelector.updateMatchmakingStatus(status);
+            });
+            
+            this.gameController.getEventHub().on('matchmaking:found', (data) => {
+                console.log('🎮 GameModeManager: Match found!', data);
+                // Hide mode selector and show loading screen
+                this.gameModeSelector.hide();
+                this.loadingScreen.show();
+            });
+            
+            this.gameController.getEventHub().on('session:joined', (data) => {
+                console.log('🎮 GameModeManager: Session joined!', data);
+                // Hide mode selector (backup in case it's still visible)
+                this.gameModeSelector.hide();
+            });
+            
+            // Start the matchmaking process AFTER connection is established
+            console.log('🎮 GameModeManager: Starting quick match...');
+            this.gameController.startQuickMatch();
+            
+            // Initialize multiplayer game systems
             await this.multiplayerGame.initializeWithMatchmaking(this.loadingScreen, statusCallbacks);
             
         } catch (error) {
@@ -262,6 +304,12 @@ export class GameModeManager {
         if (this.multiplayerGame) {
             this.multiplayerGame.cleanup();
             this.multiplayerGame = null;
+        }
+        
+        // Cleanup GameController (NEW ARCHITECTURE)
+        if (this.gameController) {
+            this.gameController.cleanup();
+            this.gameController = null;
         }
     }
 

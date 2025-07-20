@@ -36,6 +36,9 @@ class GameSession {
         this.lastStateUpdate = 0;
         this.pendingUpdates = [];
         
+        // Track broadcasted enemies to prevent duplicates
+        this.broadcastedEnemies = new Set();
+        
         this.logger.info(`GameSession created: ${this.sessionId}`);
     }
     
@@ -198,33 +201,43 @@ class GameSession {
     
     // Game Loop
     startGameLoop() {
-        if (this.gameLoop) return;
+        if (this.gameLoop) {
+            clearInterval(this.gameLoop);
+        }
+        
+        console.log(`🎮 Starting game loop with ${this.tickRate} ticks per second`);
+        
+        // Track loop iterations for periodic logging
+        this.loopCounter = 0;
         
         this.gameLoop = setInterval(() => {
-            this.tick();
+            const now = Date.now();
+            this.deltaTime = now - this.lastTickTime;
+            this.lastTickTime = now;
+            
+            this.loopCounter++;
+            
+            // Update game logic
+            this.gameLogic.update(this.deltaTime);
+            
+            // Update game state
+            this.gameState.update(this.deltaTime);
+            
+            // Send state updates to clients every few ticks
+            if (this.loopCounter % 1 === 0) { // Every tick for now, can reduce frequency later
+                this.sendStateUpdate();
+            }
         }, 1000 / this.tickRate);
+        
+        console.log('✅ Game loop started successfully');
     }
     
     stopGameLoop() {
         if (this.gameLoop) {
             clearInterval(this.gameLoop);
             this.gameLoop = null;
+            console.log('🛑 Game loop stopped');
         }
-    }
-    
-    tick() {
-        const now = Date.now();
-        this.deltaTime = now - this.lastTickTime;
-        this.lastTickTime = now;
-        
-        // Update game logic
-        this.gameLogic.update(this.deltaTime);
-        
-        // Update game state
-        this.gameState.update(this.deltaTime);
-        
-        // Send state updates
-        this.sendStateUpdate();
     }
     
     // State Synchronization
@@ -232,11 +245,45 @@ class GameSession {
         this.stateVersion++;
         this.lastStateUpdate = Date.now();
         
+        const deltaState = this.gameState.getDeltaState();
+        
+        // Check for newly spawned enemies and broadcast them individually for better client handling
+        if (deltaState.enemies) {
+            for (const [enemyId, enemy] of Object.entries(deltaState.enemies)) {
+                if (enemy === null) {
+                    // Enemy was removed, clean up tracking
+                    this.broadcastedEnemies.delete(enemyId);
+                    console.log(`🧹 Cleaned up tracking for removed enemy ${enemyId}`);
+                } else if (enemy && !this.broadcastedEnemies.has(enemyId)) {
+                    console.log(`📡 Broadcasting new enemy ${enemyId}:`, enemy);
+                    
+                    // Broadcast enemy spawn event for new enemies
+                    this.broadcastToSession('game:enemy_spawned', {
+                        enemy: {
+                            id: enemy.id,
+                            type: enemy.type,
+                            health: enemy.health,
+                            maxHealth: enemy.maxHealth,
+                            speed: enemy.speed,
+                            position: enemy.position,
+                            path: enemy.path,
+                            wave: enemy.type // Include wave info
+                        },
+                        timestamp: Date.now()
+                    });
+                    
+                    // Mark as broadcast to prevent duplicate sends
+                    this.broadcastedEnemies.add(enemyId);
+                    console.log(`✅ Enemy ${enemyId} broadcast sent to all clients`);
+                }
+            }
+        }
+        
         const stateUpdate = {
             version: this.stateVersion,
             timestamp: this.lastStateUpdate,
             deltaTime: this.deltaTime,
-            gameState: this.gameState.getDeltaState(),
+            gameState: deltaState,
             players: this.getPlayerStates()
         };
         
@@ -295,9 +342,9 @@ class GameSession {
                     });
                 }
                 
-                // Start enemy spawning
+                // Initialize enemy spawning (CooperativeGameState will handle actual spawning)
                 this.gameState.lastEnemySpawn = Date.now();
-                this.startEnemySpawning();
+                console.log('Defense phase started - enemy spawning will be handled by game state update loop');
             }
             
             return { success: true };
@@ -319,39 +366,56 @@ class GameSession {
         return result;
     }
 
-    startEnemySpawning() {
-        // Start spawning enemies every 2 seconds
-        this.enemySpawnInterval = setInterval(() => {
-            if (this.gameState.gamePhase === 'defense') {
-                for (const [playerId, playerData] of this.players) {
-                    const path = this.gameState.getPlayerPath(playerId);
-                    if (path) {
-                        const enemyId = `enemy_${playerId}_${Date.now()}`;
-                        const enemy = {
-                            id: enemyId,
-                            playerId,
-                            wave: this.gameState.currentWave,
-                            health: 100,
-                            position: path[0],
-                            path: path
-                        };
-
-                        // Add enemy to game state
-                        this.gameState.enemies.set(enemyId, enemy);
-
-                        // Notify players
-                        this.broadcastToSession('game:enemy_spawned', {
-                            enemy,
-                            timestamp: Date.now()
-                        });
-                    }
+    // State Synchronization
+    sendStateUpdate() {
+        this.stateVersion++;
+        this.lastStateUpdate = Date.now();
+        
+        const deltaState = this.gameState.getDeltaState();
+        
+        // Check for newly spawned enemies and broadcast them individually for better client handling
+        if (deltaState.enemies) {
+            for (const [enemyId, enemy] of Object.entries(deltaState.enemies)) {
+                if (enemy === null) {
+                    // Enemy was removed, clean up tracking
+                    this.broadcastedEnemies.delete(enemyId);
+                } else if (enemy && !this.broadcastedEnemies.has(enemyId)) {
+                    
+                    // Broadcast enemy spawn event for new enemies
+                    this.broadcastToSession('game:enemy_spawned', {
+                        enemy: {
+                            id: enemy.id,
+                            type: enemy.type,
+                            health: enemy.health,
+                            maxHealth: enemy.maxHealth,
+                            speed: enemy.speed,
+                            position: enemy.position,
+                            path: enemy.path,
+                            wave: enemy.type // Include wave info
+                        },
+                        timestamp: Date.now()
+                    });
+                    
+                    // Mark as broadcast to prevent duplicate sends
+                    this.broadcastedEnemies.add(enemyId);
+                    console.log(`✅ Enemy ${enemyId} broadcast sent to all clients`);
                 }
-            } else {
-                // Stop spawning if game phase changes
-                clearInterval(this.enemySpawnInterval);
             }
-        }, 2000);
+        }
+        
+        const stateUpdate = {
+            version: this.stateVersion,
+            timestamp: this.lastStateUpdate,
+            deltaTime: this.deltaTime,
+            gameState: deltaState,
+            players: this.getPlayerStates()
+        };
+        
+        this.broadcastToSession('game:state_update', stateUpdate);
     }
+    
+    // Remove the duplicate enemy spawning system - CooperativeGameState handles this now
+    // startEnemySpawning() method removed
     
     // Communication
     broadcastToSession(event, data, excludeSocketId = null) {

@@ -3,6 +3,9 @@ class GameEventHandler {
         this.io = io;
         this.sessionHandler = sessionHandler;
         this.logger = logger;
+        
+        // Track game phases to detect transitions
+        this.lastGamePhase = {};
     }
     
     registerEvents(socket) {
@@ -132,13 +135,32 @@ class GameEventHandler {
                         sharedResources: gameState.sharedResources
                     });
                     
-                    // Check if defense phase started
-                    if (result.remainingShapes === 0) {
+                    // Check if defense phase started by looking at actual game state
+                    const currentGameState = session.gameState.getPublicState();
+                    const wasBuilding = this.lastGamePhase?.[session.sessionId] === 'building';
+                    const nowDefense = currentGameState.gamePhase === 'defense';
+                    
+                    if (wasBuilding && nowDefense) {
+                        console.log('🚀 ===== SERVER: DEFENSE PHASE TRANSITION DETECTED =====');
+                        console.log('🚀 Phase changed from building to defense');
+                        console.log('🚀 Session ID:', session.sessionId);
+                        console.log('🚀 Game mode:', session.gameMode);
+                        console.log('🚀 Shapes placed: P1=', currentGameState.shapesPlaced?.player1, 'P2=', currentGameState.shapesPlaced?.player2);
+                        
                         this.sessionHandler.io.to(session.sessionId).emit('game:defense_started', {
                             phase: 'defense',
-                            message: 'All shapes placed! Defense phase starting...'
+                            gameMode: session.gameMode || 'cooperative',
+                            message: 'Defense phase starting!',
+                            timestamp: Date.now()
                         });
+                        
+                        console.log('🚀 game:defense_started event emitted to session');
+                        console.log('🚀 ===== DEFENSE STARTED EVENT SENT =====');
                     }
+                    
+                    // Track phase changes for next comparison
+                    if (!this.lastGamePhase) this.lastGamePhase = {};
+                    this.lastGamePhase[session.sessionId] = currentGameState.gamePhase;
                 }
                 
                 this.logger.debug(`Maze piece placed by ${socket.id}:`, result.mazePiece);

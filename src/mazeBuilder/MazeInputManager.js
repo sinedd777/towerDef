@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 export class MazeInputManager {
-    constructor(scene, camera, renderer, ground, mazeState, mazeBuilderUI, networkManager = null) {
+    constructor(scene, camera, renderer, ground, mazeState, mazeBuilderUI, actionDispatcher = null) {
         
         this.scene = scene;
         this.camera = camera;
@@ -9,7 +9,7 @@ export class MazeInputManager {
         this.ground = ground;
         this.mazeState = mazeState;
         this.mazeBuilderUI = mazeBuilderUI;
-        this.networkManager = networkManager; // For multiplayer turn validation
+        this.actionDispatcher = actionDispatcher; // NEW ARCHITECTURE: Use ActionDispatcher instead of NetworkManager
         
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
@@ -142,7 +142,7 @@ export class MazeInputManager {
         }
 
         // Check turn-based restrictions for multiplayer
-        if (this.networkManager && !this.isMyTurn) {
+        if (this.actionDispatcher && !this.isMyTurn) {
             this.showTurnMessage();
             return;
         }
@@ -161,8 +161,8 @@ export class MazeInputManager {
             const shapeName = this.mazeState.selectedShape.name;
             
             // For multiplayer, send placement to server; for single player, place locally
-            if (this.networkManager) {
-                // Multiplayer mode: send to server for validation and synchronization
+            if (this.actionDispatcher) {
+                // Multiplayer mode: send to server for validation and synchronization via ActionDispatcher
                 this.sendShapePlacementToServer(shapeName, point.x, point.z);
                 // Important: Update the click debounce time after sending
                 this.lastClick = Date.now();
@@ -203,8 +203,8 @@ export class MazeInputManager {
     }
 
     sendShapePlacementToServer(shapeName, x, z) {
-        if (!this.networkManager || !this.mazeState.selectedShape) {
-            console.error('Cannot send shape placement: missing network manager or selected shape');
+        if (!this.actionDispatcher || !this.mazeState.selectedShape) {
+            console.error('Cannot send shape placement: missing ActionDispatcher or selected shape');
             return;
         }
 
@@ -220,8 +220,8 @@ export class MazeInputManager {
             gridZ: Math.round(z)
         };
 
-        // Send to server via network manager
-        this.networkManager.placeMaze(shapeData.gridX, shapeData.gridZ, shapeData);
+        // Send to server via ActionDispatcher (NEW ARCHITECTURE)
+        this.actionDispatcher.placeMazeShape(shapeData, { x: shapeData.gridX, z: shapeData.gridZ });
     }
 
     showTurnMessage() {

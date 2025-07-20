@@ -155,7 +155,19 @@ class CooperativeGameState {
         
         // Check if we should transition to defense phase
         const totalShapes = this.shapesPlaced.player1 + this.shapesPlaced.player2;
-        if (totalShapes >= 6) {
+        
+        // Original logic: Start when 6 shapes total are placed
+        const allShapesUsed = totalShapes >= 6;
+        
+        // NEW logic: Also start when both players have exhausted their individual supplies
+        // This handles the case where players might not use all their shapes
+        const player1Done = this.shapesPlaced.player1 >= 3;
+        const player2Done = this.shapesPlaced.player2 >= 3;
+        const bothPlayersExhausted = player1Done && player2Done;
+        
+        if (allShapesUsed || bothPlayersExhausted) {
+            console.log(`🚀 Starting defense phase - Shapes: P1=${this.shapesPlaced.player1}, P2=${this.shapesPlaced.player2}, Total=${totalShapes}`);
+            console.log(`🚀 Trigger: ${allShapesUsed ? 'All shapes used' : 'Both players exhausted'}`);
             this.startDefensePhase();
         }
         
@@ -184,11 +196,18 @@ class CooperativeGameState {
     
     // Defense Phase
     startDefensePhase() {
+        console.log('🚀 ===== SERVER: DEFENSE PHASE STARTING =====');
+        console.log('🚀 Previous phase:', this.gamePhase);
+        
         this.gamePhase = 'defense';
         this.currentTurn = 'player1'; // Reset to player1 for defense
         this.markEntityChanged('gameState', 'phase');
         
-        console.log('Cooperative defense phase started');
+        console.log('🚀 Defense phase set to:', this.gamePhase);
+        console.log('🚀 Phase change marked in entity changes');
+        console.log('🚀 ===== DEFENSE PHASE TRANSITION COMPLETE =====');
+        console.log('🚀 NOTE: game:defense_started event should be sent by GameEventHandler');
+        
         return { success: true, phase: 'defense' };
     }
     
@@ -307,7 +326,12 @@ class CooperativeGameState {
     }
     
     updateEnemySpawning() {
+        if (this.gamePhase !== 'defense') {
+            return;
+        }
+        
         const timeSinceLastSpawn = this.gameTime - this.lastEnemySpawn;
+        
         if (timeSinceLastSpawn >= this.enemySpawnInterval) {
             this.spawnEnemy();
             this.lastEnemySpawn = this.gameTime;
@@ -319,12 +343,17 @@ class CooperativeGameState {
         
         // Choose random viable spawn point
         const viableSpawns = this.getViableSpawnPoints();
-        if (viableSpawns.length === 0) return;
+        
+        if (viableSpawns.length === 0) {
+            console.log(`❌ No viable spawn points available! Cannot spawn enemy.`);
+            return;
+        }
         
         const spawnPoint = viableSpawns[Math.floor(Math.random() * viableSpawns.length)];
         
         // Use calculated path if available, otherwise fall back to simple path
         let enemyPath = this.primaryPath;
+        
         if (!enemyPath) {
             enemyPath = this.generateEnemyPath(spawnPoint);
         }
@@ -339,12 +368,16 @@ class CooperativeGameState {
             }
         }
         
+        const enemyType = this.getEnemyTypeForWave(this.sharedResources.wave);
+        const enemyHealth = this.getEnemyHealth(this.sharedResources.wave);
+        const enemySpeed = this.getEnemySpeed(this.sharedResources.wave);
+        
         const enemy = {
             id: enemyId,
-            type: this.getEnemyTypeForWave(this.sharedResources.wave),
-            health: this.getEnemyHealth(this.sharedResources.wave),
-            maxHealth: this.getEnemyHealth(this.sharedResources.wave),
-            speed: this.getEnemySpeed(this.sharedResources.wave),
+            type: enemyType,
+            health: enemyHealth,
+            maxHealth: enemyHealth,
+            speed: enemySpeed,
             position: { x: spawnPoint.x, y: 0, z: spawnPoint.z },
             path: enemyPath,
             pathProgress: 0,
@@ -355,6 +388,8 @@ class CooperativeGameState {
         this.enemies.set(enemyId, enemy);
         this.enemiesSpawned++;
         this.markEntityChanged('enemies', enemyId);
+        
+        console.log(`🚀 Spawned enemy ${enemyId} (wave ${this.sharedResources.wave})`);
     }
     
     getViableSpawnPoints() {
@@ -366,8 +401,8 @@ class CooperativeGameState {
     generateEnemyPath(spawnPoint) {
         // Simple fallback path from spawn to exit - will be replaced by A* pathfinding
         return [
-            { x: spawnPoint.x, z: spawnPoint.z },
-            { x: this.exitPoint.x, z: this.exitPoint.z }
+            { x: spawnPoint.x, y: 0, z: spawnPoint.z },
+            { x: this.exitPoint.x, y: 0, z: this.exitPoint.z }
         ];
     }
     
@@ -507,9 +542,13 @@ class CooperativeGameState {
         const start = path[segmentIndex];
         const end = path[Math.min(segmentIndex + 1, path.length - 1)];
         
+        // Ensure Y coordinates exist to prevent NaN
+        const startY = start.y !== undefined ? start.y : 0;
+        const endY = end.y !== undefined ? end.y : 0;
+        
         return {
             x: start.x + (end.x - start.x) * segmentProgress,
-            y: start.y + (end.y - start.y) * segmentProgress,
+            y: startY + (endY - startY) * segmentProgress,
             z: start.z + (end.z - start.z) * segmentProgress
         };
     }
@@ -566,7 +605,7 @@ class CooperativeGameState {
                     changes[entityType][entityId] = this.towers.get(entityId) || null;
                     break;
                 case 'enemies':
-                    changes[entityType][entityId] = this.enemies.get(entityId) || null;
+                    changes[entityType][entityId] = this.enemies.get(entityId) || null;             
                     break;
                 case 'projectiles':
                     changes[entityType][entityId] = this.projectiles.get(entityId) || null;
