@@ -1239,3 +1239,238 @@
     color: rgba(255, 255, 255, 0.7);
     font-size: 12px;
 } 
+
+/* Game Summary Overlay */
+.game-summary-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.game-summary-content {
+    background-color: #2a2a2a;
+    padding: 2rem;
+    border-radius: 10px;
+    text-align: center;
+    color: white;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    max-width: 500px;
+    width: 90%;
+}
+
+.game-summary-content h1 {
+    font-size: 2.5rem;
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    font-weight: bold;
+}
+
+.game-summary-content.victory h1 {
+    color: #4CAF50;
+}
+
+.game-summary-content.defeat h1 {
+    color: #f44336;
+}
+
+.summary-stats {
+    margin: 1.5rem 0;
+    font-size: 1.2rem;
+}
+
+.summary-stats p {
+    margin: 0.5rem 0;
+    padding: 0.5rem;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+}
+
+.play-again-btn {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    padding: 1rem 2rem;
+    font-size: 1.2rem;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    margin-top: 1rem;
+}
+
+.play-again-btn:hover {
+    background-color: #45a049;
+} 
+
+/* Modal Styles */
+.modal-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+}
+
+.modal-content {
+    background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
+    border: 2px solid #4a5d8f;
+    border-radius: 8px;
+    padding: 20px;
+    position: relative;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 0 20px rgba(74, 93, 143, 0.3),
+                0 0 40px rgba(74, 93, 143, 0.2);
+    animation: modalAppear 0.3s ease-out;
+}
+
+.modal-title {
+    color: #8ab4f8;
+    font-size: 24px;
+    margin: 0 0 20px 0;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-family: 'Arial', sans-serif;
+    text-shadow: 0 0 10px rgba(138, 180, 248, 0.5);
+}
+
+.modal-body {
+    color: #ffffff;
+    font-size: 16px;
+    line-height: 1.6;
+    margin-bottom: 20px;
+}
+
+.modal-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: none;
+    border: none;
+    color: #8ab4f8;
+    cursor: pointer;
+    padding: 8px;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+    background-color: rgba(138, 180, 248, 0.05);
+}
+
+.modal-close:hover {
+    background-color: rgba(138, 180, 248, 0.15);
+    transform: rotate(90deg);
+}
+
+.modal-close svg {
+    width: 20px;
+    height: 20px;
+    transition: all 0.3s ease;
+}
+
+.modal-close:hover svg {
+    transform: scale(1.1);
+}
+
+@keyframes modalAppear {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+} 
+
+/* Modal Info Styles */
+.modal-info {
+    color: #ffffff;
+    padding: 10px;
+}
+
+.modal-section {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: rgba(138, 180, 248, 0.05);
+    border-left: 3px solid #8ab4f8;
+    border-radius: 0 8px 8px 0;
+}
+
+.modal-section h3 {
+    color: #8ab4f8;
+    margin: 0 0 10px 0;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.modal-section p {
+    margin: 0;
+    line-height: 1.6;
+    color: #e1e1e1;
+}
+
+.modal-section ul {
+    margin: 10px 0;
+    padding-left: 20px;
+    list-style-type: none;
+}
+
+.modal-section ul li {
+    margin: 8px 0;
+    position: relative;
+    padding-left: 15px;
+    color: #e1e1e1;
+}
+
+.modal-section ul li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 6px;
+    height: 6px;
+    background: #8ab4f8;
+    border-radius: 50%;
+    box-shadow: 0 0 5px rgba(138, 180, 248, 0.5);
+}
+
+/* Hover effects */
+.modal-section:hover {
+    background: rgba(138, 180, 248, 0.08);
+    transform: translateX(2px);
+    transition: all 0.3s ease;
+} 
+
+/* Key indicator styles */
+.modal-section .key {
+    display: inline-block;
+    background: rgba(138, 180, 248, 0.1);
+    border: 1px solid #8ab4f8;
+    border-radius: 4px;
+    padding: 2px 8px;
+    margin: 0 2px;
+    color: #8ab4f8;
+    font-family: monospace;
+    font-weight: bold;
+    box-shadow: 0 0 5px rgba(138, 180, 248, 0.2);
+} 

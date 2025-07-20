@@ -15,6 +15,8 @@ import { EnvironmentManager } from '../managers/EnvironmentManager.js';
 import { objectPool } from '../managers/ObjectPool.js';
 import { ParticleSystem } from '../effects/ParticleSystem.js';
 import { SceneSetup } from '../core/SceneSetup.js';
+import { GameSummaryUI } from '../ui/GameSummaryUI.js';
+import { Modal } from '../ui/Modal.js';
 
 export class SinglePlayerGame {
     constructor() {
@@ -39,6 +41,44 @@ export class SinglePlayerGame {
         this.towerSelectionUI = null;
         this.towerManagementUI = null;
         this.loadingScreen = null;
+        this.gameSummaryUI = null;  // Add game summary UI
+        this.infoModal = new Modal();
+        
+        // Show info modal with game objectives and strategy tips
+        const modalContent = `
+            <div class="modal-info">
+                <div class="modal-section">
+                    <h3>🎯 Objective</h3>
+                    <p>Survive as long as possible and accumulate the highest score!</p>
+                </div>
+
+                <div class="modal-section">
+                    <h3>🏗️ Build Phase</h3>
+                    <p>Use the build phase wisely to create a maze that forces enemies to take longer paths to reach the end.</p>
+                </div>
+
+                <div class="modal-section">
+                    <h3>⚔️ Game Mechanics</h3>
+                    <ul>
+                        <li>Towers can be upgraded to increase their power</li>
+                        <li>Your resources are limited - spend wisely!</li>
+                        <li>Enemies deal damage to your base</li>
+                        <li>Base Health starts at 100</li>
+                    </ul>
+                </div>
+
+                <div class="modal-section">
+                    <h3>⚡ Strategic Tips</h3>
+                    <ul>
+                        <li>Enemies become stronger with each wave</li>
+                        <li>Every 5 waves, you get to place a new shape - plan ahead!</li>
+                        <li>Use <span class="key">T</span> to select shape type and <span class="key">R</span> to rotate shapes</li>
+                    </ul>
+                </div>
+            </div>
+        `;
+        
+        this.infoModal.show('Welcome Commander', modalContent);
         
         // Input managers
         this.inputManager = null;
@@ -92,6 +132,9 @@ export class SinglePlayerGame {
         this.towerSelectionUI = new TowerSelectionUI(this.gameState);
         this.towerManagementUI = new TowerManagementUI(this.gameState, this.labelRenderer, this.camera);
                     this.mazeBuilderUI = new MazeBuilderUI(this.mazeState, this.gameState, false);  // false = single player mode
+
+        // Initialize game summary UI
+        this.gameSummaryUI = new GameSummaryUI();
 
         // Setup UI callbacks
         this.setupUICallbacks();
@@ -263,8 +306,9 @@ export class SinglePlayerGame {
         // Hide maze builder UI
         this.mazeBuilderUI.hide();
         
-        // Show tower selection UI
+        // Show tower selection UI and add single-player class
         this.towerSelectionUI.show();
+        document.getElementById('basic-tower-menu').classList.add('single-player');
         
         // Cleanup maze input and initialize tower input
         if (this.mazeInputManager) {
@@ -286,8 +330,9 @@ export class SinglePlayerGame {
     startBuildingPhase() {
         console.log('Starting building phase...');
         
-        // Hide tower selection UI
+        // Hide tower selection UI and remove single-player class
         this.towerSelectionUI.hide();
+        document.getElementById('basic-tower-menu').classList.remove('single-player');
         
         // Prepare maze state for building
         this.mazeState.prepareForBuilding();
@@ -312,9 +357,19 @@ export class SinglePlayerGame {
         );
         this.updatePathVisualization(currentPath);
         
-        // Show message to player
-        if (this.gameState.wave > 1) {
-            alert(`Congratulations! You've survived ${this.gameState.wave} waves. You get a new shape to add to your maze!`);
+        // Show message to player using modal only every 5 waves
+        if (this.gameState.wave > 1 && this.gameState.wave % 5 === 0) {
+            const modalContent = `
+                <div class="modal-info">
+                    <div class="modal-section">
+                        <h3>🎉 Wave ${this.gameState.wave} Complete!</h3>
+                        <p>Congratulations, Commander! You've survived ${this.gameState.wave} waves.</p>
+                        <p>You've reached a milestone! As a reward, you can now add a new shape to strengthen your maze.</p>
+                        <p>Use <span class="key">T</span> to select shape type and <span class="key">R</span> to rotate it.</p>
+                    </div>
+                </div>
+            `;
+            this.infoModal.show('New Shape Available', modalContent);
         }
         
         console.log('Building phase started');
@@ -444,7 +499,7 @@ export class SinglePlayerGame {
                 // Check if game over
                 if (this.gameState.health <= 0) {
                     console.log('Game Over!');
-                    alert('Game Over! Your base was destroyed.');
+                    this.handleGameOver(false); // Game over - defeat
                 }
                 
                 continue;
@@ -462,6 +517,14 @@ export class SinglePlayerGame {
                 this.gameState.addScore(10);
                 this.gameState.addMoney(5);
                 this.gameState.removeEnemy();
+
+                // Check if wave is complete and no more enemies can spawn
+                if (this.enemies.length === 0 && !this.gameState.canSpawnMore()) {
+                    // Check if player has survived all waves (e.g., 10 waves)
+                    if (this.gameState.wave >= 10) {
+                        this.handleGameOver(true); // Victory!
+                    }
+                }
                 continue;
             }
         }
@@ -580,6 +643,22 @@ export class SinglePlayerGame {
         console.log('Single player game stopped');
     }
 
+    handleGameOver(isVictory) {
+        // Stop the game
+        this.stop();
+
+        // Get final stats
+        const stats = {
+            wave: this.gameState.wave,
+            score: this.gameState.score,
+            money: this.gameState.money,
+            health: this.gameState.health
+        };
+
+        // Show game summary
+        this.gameSummaryUI.show(stats, isVictory);
+    }
+
     cleanup() {
         this.stop();
         
@@ -588,6 +667,14 @@ export class SinglePlayerGame {
         if (this.towerSelectionUI) this.towerSelectionUI.cleanup?.();
         if (this.towerManagementUI) this.towerManagementUI.cleanup?.();
         if (this.loadingScreen) this.loadingScreen.cleanup?.();
+        if (this.gameSummaryUI) {
+            this.gameSummaryUI.cleanup();
+            this.gameSummaryUI = null;
+        }
+        if (this.infoModal) {
+            this.infoModal.destroy();
+            this.infoModal = null;
+        }
         
         // Cleanup input managers
         if (this.inputManager) this.inputManager.destroy?.();

@@ -3,6 +3,7 @@ import { generateShapeHand } from './TetrisShapes.js';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { Pathfinding } from '../Pathfinding.js';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { Modal } from '../ui/Modal.js';
 
 export class MazeState {
     constructor(scene, gridSize = 10) {
@@ -19,6 +20,7 @@ export class MazeState {
         this.pathfinding = new Pathfinding(gridSize);
         this.lastPlacedShape = null;
         this.isPlacing = false; // Add placement lock
+        this.lastShapeWave = 0;  // Track when the last shape was given
         
         // Path constraints - start and end must remain clear
         // Start area is 2x2 in top-left corner at (-8,-8)
@@ -27,6 +29,7 @@ export class MazeState {
         this.pathEndArea = { x: 8, z: 8, width: 2, height: 2 };
         
         this.init();
+        this.invalidPlacementModal = new Modal();
     }
 
     init() {
@@ -434,7 +437,7 @@ export class MazeState {
         if (!validPath) {
             console.log('Path blocked, undoing placement');
             // Show alert
-            alert('This placement blocks all paths to the end! Click OK to undo and try again.');
+            this.showInvalidPlacementMessage();
             // Undo the placement
             this.undoLastPlacement();
             this.isPlacing = false; // Unlock
@@ -532,6 +535,17 @@ export class MazeState {
         this.currentShapeHand = []; // Clear any existing shapes first
         this.addNewShape(); // Add a new shape when preparing for building
         console.log('Prepared for building phase, current hand:', this.currentShapeHand.map(s => s.name));
+
+        // Only allow new shape placement every 5 waves
+        const currentWave = this.gameState ? this.gameState.wave : 1;
+        const isNewShapeWave = currentWave % 5 === 0 && currentWave > this.lastShapeWave;
+        
+        if (isNewShapeWave) {
+            this.canPlaceShape = true;
+            this.lastShapeWave = currentWave;
+        } else {
+            this.canPlaceShape = false;
+        }
     }
 
     // Apply placement received from server (for multiplayer synchronization)
@@ -599,6 +613,19 @@ export class MazeState {
         console.log('🏁 applyServerPlacement completed');
     }
 
+    showInvalidPlacementMessage() {
+        const modalContent = `
+            <div class="modal-info">
+                <div class="modal-section">
+                    <h3>⚠️ Invalid Placement</h3>
+                    <p>This placement blocks all paths to the end!</p>
+                    <p>The placement will be undone automatically.</p>
+                </div>
+            </div>
+        `;
+        this.invalidPlacementModal.show('Path Blocked', modalContent);
+    }
+
     // Clean up maze builder
     cleanup() {
         // Clear all visual elements from the scene
@@ -618,5 +645,9 @@ export class MazeState {
         
         // Clear preview
         this.clearPreview();
+        if (this.invalidPlacementModal) {
+            this.invalidPlacementModal.destroy();
+            this.invalidPlacementModal = null;
+        }
     }
 } 
