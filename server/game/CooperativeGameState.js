@@ -142,6 +142,11 @@ class CooperativeGameState {
         // Add to maze grid
         for (const pos of mazeData.positions) {
             const gridPos = `${pos.x},${pos.z}`;
+            console.log('🧩 Storing maze block:', {
+                position: pos,
+                gridKey: gridPos,
+                mazePieceId: mazeId
+            });
             this.maze.set(gridPos, mazePiece);
         }
         
@@ -198,17 +203,20 @@ class CooperativeGameState {
     startDefensePhase() {
         console.log('🚀 ===== SERVER: DEFENSE PHASE STARTING =====');
         console.log('🚀 Previous phase:', this.gamePhase);
+        console.log('🚀 Previous turn:', this.currentTurn);
         
         this.gamePhase = 'defense';
         this.currentTurn = 'player1'; // Reset to player1 for defense
         this.markEntityChanged('gameState', 'phase');
+        this.markEntityChanged('gameState', 'turn');
         
         console.log('🚀 Defense phase set to:', this.gamePhase);
-        console.log('🚀 Phase change marked in entity changes');
+        console.log('🚀 Current turn set to:', this.currentTurn);
+        console.log('🚀 Phase and turn changes marked in entity changes');
         console.log('🚀 ===== DEFENSE PHASE TRANSITION COMPLETE =====');
         console.log('🚀 NOTE: game:defense_started event should be sent by GameEventHandler');
         
-        return { success: true, phase: 'defense' };
+        return { success: true, phase: 'defense', currentTurn: this.currentTurn };
     }
     
     // Tower Management (Defense Phase)
@@ -265,16 +273,28 @@ class CooperativeGameState {
         const pos = towerData.position;
         const bounds = this.gameBoard.bounds;
         
+        console.log('🔍 Tower placement validation:', {
+            towerPosition: pos,
+            bounds: bounds
+        });
+        
         // Check bounds
         if (pos.x < bounds.minX || pos.x > bounds.maxX ||
             pos.z < bounds.minZ || pos.z > bounds.maxZ) {
             return { success: false, reason: 'out_of_bounds' };
         }
         
-        // Check if position is occupied by maze
-        const gridPos = `${Math.floor(pos.x)},${Math.floor(pos.z)}`;
-        if (this.maze.has(gridPos)) {
-            return { success: false, reason: 'position_occupied_maze' };
+        // Check if position is NOT on a maze block (towers must be placed on maze blocks)
+        const gridPos = `${pos.x.toFixed(1)},${pos.z.toFixed(1)}`;
+        
+        console.log('🔍 Maze block validation:', {
+            lookingFor: gridPos,
+            allMazeKeys: Array.from(this.maze.keys()),
+            mazeHasKey: this.maze.has(gridPos)
+        });
+        
+        if (!this.maze.has(gridPos)) {
+            return { success: false, reason: 'must_place_on_maze_block' };
         }
         
         // Check for tower conflicts

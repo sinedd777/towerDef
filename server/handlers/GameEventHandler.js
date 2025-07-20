@@ -32,7 +32,20 @@ class GameEventHandler {
     
     handleTowerPlace(socket, data) {
         try {
+            console.log('🏗️ SERVER: Received tower placement request:', {
+                socketId: socket.id,
+                playerId: socket.playerId,
+                data: data
+            });
+            
             const result = this.processGameAction(socket, 'tower:place', data);
+            
+            console.log('🏗️ SERVER: Tower placement result:', {
+                success: result.success,
+                reason: result.reason,
+                tower: result.success ? result.data?.tower : null
+            });
+            
             if (result.success) {
                 socket.emit('tower:placed', result.data);
                 
@@ -62,6 +75,11 @@ class GameEventHandler {
                     socket.emit('game:message', { 
                         type: 'warning', 
                         message: 'Not enough shared money for this tower.' 
+                    });
+                } else if (result.reason === 'must_place_on_maze_block') {
+                    socket.emit('game:message', { 
+                        type: 'warning', 
+                        message: 'Towers must be placed on maze blocks you built.' 
                     });
                 }
                 
@@ -146,15 +164,19 @@ class GameEventHandler {
                         console.log('🚀 Session ID:', session.sessionId);
                         console.log('🚀 Game mode:', session.gameMode);
                         console.log('🚀 Shapes placed: P1=', currentGameState.shapesPlaced?.player1, 'P2=', currentGameState.shapesPlaced?.player2);
+                        console.log('🚀 Current turn:', currentGameState.currentTurn);
                         
                         this.sessionHandler.io.to(session.sessionId).emit('game:defense_started', {
                             phase: 'defense',
                             gameMode: session.gameMode || 'cooperative',
+                            currentTurn: currentGameState.currentTurn,
+                            gamePhase: currentGameState.gamePhase,
+                            sharedResources: currentGameState.sharedResources,
                             message: 'Defense phase starting!',
                             timestamp: Date.now()
                         });
                         
-                        console.log('🚀 game:defense_started event emitted to session');
+                        console.log('🚀 game:defense_started event emitted to session with turn:', currentGameState.currentTurn);
                         console.log('🚀 ===== DEFENSE STARTED EVENT SENT =====');
                     }
                     

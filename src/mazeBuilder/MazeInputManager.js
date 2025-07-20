@@ -208,20 +208,30 @@ export class MazeInputManager {
             return;
         }
 
+        // Use the same grid snapping as single player: grid center coordinates
+        const gridX = Math.floor(x) + 0.5;
+        const gridZ = Math.floor(z) + 0.5;
+
         // Prepare shape data to send to server
         const shapeData = {
             shape: shapeName,
             positions: this.mazeState.selectedShape.cells.map(cell => ({
-                x: Math.round(x) + cell[0],
-                z: Math.round(z) + cell[1]
+                x: gridX + cell[0],  // Use grid center coordinates like single player
+                z: gridZ + cell[1]
             })),
             color: this.mazeState.selectedShape.color,
-            gridX: Math.round(x),
-            gridZ: Math.round(z)
+            gridX: gridX,
+            gridZ: gridZ
         };
 
+        console.log('🧩 Sending maze shape to server:', {
+            shapeName,
+            gridPosition: { x: gridX, z: gridZ },
+            positions: shapeData.positions
+        });
+
         // Send to server via ActionDispatcher (NEW ARCHITECTURE)
-        this.actionDispatcher.placeMazeShape(shapeData, { x: shapeData.gridX, z: shapeData.gridZ });
+        this.actionDispatcher.placeMazeShape(shapeData, { x: gridX, z: gridZ });
     }
 
     showTurnMessage() {

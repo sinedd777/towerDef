@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { NetworkManager } from '../network/NetworkManager.js';
 import { MultiplayerScene } from '../multiplayer/MultiplayerScene.js';
 import { MultiplayerInputManager } from '../multiplayer/MultiplayerInputManager.js';
+import { MultiplayerTowerInputManager } from '../multiplayer/MultiplayerTowerInputManager.js';
 import { LoadingScreen } from '../ui/LoadingScreen.js';
 import { SpectatorOverlay } from '../ui/SpectatorOverlay.js';
 import { TurnIndicatorUI } from '../ui/TurnIndicatorUI.js';
@@ -11,16 +12,16 @@ import { MazeBuilderUI } from '../mazeBuilder/MazeBuilderUI.js';
 import { MazeInputManager } from '../mazeBuilder/MazeInputManager.js';
 import { TowerSelectionUI } from '../ui/TowerSelectionUI.js';
 import { TowerManagementUI } from '../ui/TowerManagementUI.js';
+import { TOWER_TYPES } from '../TowerTypes.js';
 import { assetManager } from '../managers/AssetManager.js';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { Enemy } from '../Enemy.js';
+import { Tower } from '../Tower.js';
 import { Pathfinding } from '../Pathfinding.js';
 import { EnvironmentManager } from '../managers/EnvironmentManager.js';
 
 export class MultiplayerGame {
     constructor(gameController = null) {
-        console.log('🎮 MultiplayerGame: Constructor called - class is loading properly!');
-        
         // Core systems (NEW ARCHITECTURE)
         this.gameController = gameController;
         this.networkManager = gameController ? gameController.getNetworkManager() : null;
@@ -68,10 +69,10 @@ export class MultiplayerGame {
         
         // Input managers  
         this.mazeInputManager = null;
+        this.towerInputManager = null;
         
         // CRITICAL: Setup EventHub handlers IMMEDIATELY in constructor to avoid race conditions
         if (this.eventHub && this.gameController) {
-            console.log('🏁 MultiplayerGame: Setting up EventHub handlers in CONSTRUCTOR to prevent race conditions');
             this.setupEventHubHandlers();
         }
         
@@ -112,27 +113,24 @@ export class MultiplayerGame {
         }
         
         // Event handlers already set up in constructor - no need to set up again
-        console.log('✅ MultiplayerGame: EventHub handlers already registered in constructor');
-        
-        // Note: Defense handler now uses proper NetworkManager callback system
-        // Direct socket access removed to follow proper architecture
-        
-        // Setup connection handler to start matchmaking after connection
-        if (!this.gameController) {
-            // LEGACY mode: handle connection ourselves
-        this.networkManager.setOnConnected(() => {
-            this.isConnected = true;
-            // Start quick match once connected
-            this.networkManager.startQuickMatch();
-        });
-        
-        // Connect to server
-        this.networkManager.connect();
-        } else {
-            // NEW ARCHITECTURE: GameController already handles connection and matchmaking
-            console.log('✅ MultiplayerGame: Using GameController connection - skipping direct connect');
-            this.isConnected = this.networkManager.isConnected;
-        }
+                    // Note: Defense handler now uses proper NetworkManager callback system
+            // Direct socket access removed to follow proper architecture
+            
+            // Setup connection handler to start matchmaking after connection
+            if (!this.gameController) {
+                // LEGACY mode: handle connection ourselves
+                this.networkManager.setOnConnected(() => {
+                    this.isConnected = true;
+                    // Start quick match once connected
+                    this.networkManager.startQuickMatch();
+                });
+                
+                // Connect to server
+                this.networkManager.connect();
+            } else {
+                // NEW ARCHITECTURE: GameController already handles connection and matchmaking
+                this.isConnected = this.networkManager.isConnected;
+            }
     }
 
     /**
@@ -148,8 +146,6 @@ export class MultiplayerGame {
      * Setup event handlers using EventHub (NEW ARCHITECTURE)
      */
     setupEventHubHandlers() {
-        console.log('🔧 MultiplayerGame: Setting up EventHub handlers (NEW ARCHITECTURE)...');
-        
         if (!this.eventHub) {
             console.error('❌ MultiplayerGame: No EventHub available!');
             return;
@@ -170,10 +166,23 @@ export class MultiplayerGame {
         
         // === GAME PHASE EVENTS ===
         this.eventHub.on('game:defense_started', (data) => {
-            console.log('🚀 === DEFENSE PHASE STARTED (EventHub) ===');
-            console.log('🚀 Defense phase data from server:', data);
-            console.log('🚀 Game mode:', data.gameMode);
-            console.log('🚀 Shared path available:', !!data.sharedPath);
+            // CRITICAL: Update turn state first for tower operations
+            if (data.currentTurn && this.localPlayerId) {
+                // Update turn indicator UI
+                if (this.turnIndicatorUI) {
+                    this.turnIndicatorUI.updateTurn({
+                        currentTurn: data.currentTurn,
+                        gamePhase: data.gamePhase || 'defense',
+                        sharedResources: data.sharedResources
+                    });
+                    this.turnIndicatorUI.updateMyTurn(data.currentTurn === this.localPlayerId);
+                }
+                
+                // Update tower input manager turn state
+                if (this.towerInputManager) {
+                    this.towerInputManager.updateTurnState(data.currentTurn, this.localPlayerId, data.gamePhase || 'defense');
+                }
+            }
             
             // Show phase transition UI
             if (this.turnIndicatorUI) {
@@ -215,6 +224,11 @@ export class MultiplayerGame {
             // Update maze input manager turn state
             if (this.mazeInputManager) {
                 this.mazeInputManager.updateTurnState(data.currentTurn, this.localPlayerId, data.gamePhase);
+            }
+            
+            // Update tower input manager turn state
+            if (this.towerInputManager) {
+                this.towerInputManager.updateTurnState(data.currentTurn, this.localPlayerId, data.gamePhase);
             }
             
             // Update phase if changed
@@ -269,37 +283,20 @@ export class MultiplayerGame {
         
         // === ENEMY EVENTS ===
         this.eventHub.on('enemy:spawned', (data) => {
-            console.log('🎯 ===== CLIENT ENEMY CREATION START (EventHub) =====');
-            console.log('🎯 Enemy spawn event received on client');
-            console.log('🎯 Data received:', data);
-            console.log('🎯 Current client enemies count before creation:', this.enemies.size);
-            console.log('🎯 Client scene object count before creation:', this.multiplayerScene?.scene?.children?.length || 'scene not available');
-            
             // Create enemy in scene
             if (data.enemy) {
-                console.log('🔄 Processing enemy data...');
-                
                 // Convert server path format to client format
                 const enemyPath = data.enemy.path.map(waypoint => {
                     if (waypoint.position) {
-                        console.log('🛤️ Waypoint already in correct format:', waypoint);
                         return waypoint; // Already in correct format
                     } else {
                         // Convert simple {x, z} to position format
-                        const converted = {
+                        return {
                             position: new THREE.Vector3(waypoint.x, 0.1, waypoint.z),
                             x: waypoint.x,
                             z: waypoint.z
                         };
-                        console.log('🛤️ Converting waypoint format from', waypoint, 'to', converted);
-                        return converted;
                     }
-                });
-                
-                console.log('🛤️ Final enemy path created:', {
-                    length: enemyPath.length,
-                    firstWaypoint: enemyPath[0],
-                    lastWaypoint: enemyPath[enemyPath.length - 1]
                 });
                 
                 // Extract wave number from enemy type (e.g., 'ufo-a' = wave 1, 'ufo-b' = wave 2)
@@ -308,12 +305,9 @@ export class MultiplayerGame {
                     const typeMap = { 'ufo-a': 1, 'ufo-b': 2, 'ufo-c': 3, 'ufo-d': 4 };
                     wave = typeMap[data.enemy.type] || 1;
                 }
-                console.log('👾 Enemy wave calculated:', wave, 'from type:', data.enemy.type);
                 
                 // Create enemy with proper wave and path
-                console.log('🏗️ Creating Enemy instance...');
                 const enemy = new Enemy(enemyPath, wave);
-                console.log('✅ Enemy instance created successfully');
                 
                 // Set initial position from server data
                 if (data.enemy.position) {
@@ -323,14 +317,12 @@ export class MultiplayerGame {
                         z: data.enemy.position.z
                     };
                     enemy.mesh.position.set(newPosition.x, newPosition.y, newPosition.z);
-                    console.log('📍 Enemy position set to:', newPosition);
                 }
                 
                 // Set health from server data
                 if (data.enemy.health !== undefined) {
                     enemy.health = data.enemy.health;
                     enemy.maxHealth = data.enemy.maxHealth || data.enemy.health;
-                    console.log('❤️ Enemy health set:', enemy.health, '/', enemy.maxHealth);
                 }
                 
                 // Set speed from server data
@@ -338,23 +330,16 @@ export class MultiplayerGame {
                     enemy.speed = data.enemy.speed;
                     enemy.baseSpeed = data.enemy.speed;
                     enemy.currentSpeed = data.enemy.speed;
-                    console.log('💨 Enemy speed set:', enemy.speed);
                 }
                 
                 // Add to scene and store reference
                 if (this.multiplayerScene && this.multiplayerScene.scene) {
-                    console.log('🎬 Adding enemy to scene...');
                     this.multiplayerScene.scene.add(enemy.mesh);
-                    console.log('✅ Enemy mesh added to scene');
                 } else {
                     console.error('❌ Cannot add enemy to scene - multiplayerScene not available!');
                 }
                 
-                console.log('💾 Storing enemy in enemies map...');
                 this.enemies.set(data.enemy.id, enemy);
-                console.log('✅ Enemy stored in map');
-                
-                console.log('🎯 ===== ENEMY CREATION COMPLETE (EventHub) =====');
             } else {
                 console.error('❌ No enemy data in spawn event!', data);
             }
@@ -376,14 +361,9 @@ export class MultiplayerGame {
         
         // === SESSION EVENTS ===
         this.eventHub.on('session:joined', (data) => {
-            console.log('*** SESSION JOINED EVENT FIRED (EventHub) ***', Date.now());
-            console.log('Joined multiplayer session:', data);
-            
             // Store local player ID - FIXED: read from data.player.playerId
             this.localPlayerId = data.player.playerId;
             this.isInSession = true;
-            
-            console.log('🎯 Set localPlayerId to:', this.localPlayerId);
             
             // Call external callback to hide game mode selector
             if (this.onSessionJoined) {
@@ -427,10 +407,6 @@ export class MultiplayerGame {
      * Setup all network event handlers (LEGACY - fallback when no EventHub)
      */
     setupNetworkHandlers() {
-        console.log('🔧 MultiplayerGame: Setting up network handlers...');
-        console.log('🔧 NetworkManager available:', !!this.networkManager);
-        console.log('🔧 NetworkManager socket:', !!this.networkManager?.socket);
-        
         if (!this.networkManager) {
             console.error('❌ MultiplayerGame: No NetworkManager available when setting up handlers!');
             return;
@@ -463,6 +439,11 @@ export class MultiplayerGame {
                 this.mazeInputManager.updateTurnState(data.currentTurn, this.localPlayerId, data.gamePhase);
             }
             
+            // Update tower input manager turn state
+            if (this.towerInputManager) {
+                this.towerInputManager.updateTurnState(data.currentTurn, this.localPlayerId, data.gamePhase);
+            }
+            
             // Update phase if changed
             if (data.gamePhase) {
                 this.updateGamePhase(data.gamePhase);
@@ -485,6 +466,15 @@ export class MultiplayerGame {
         // Handle other players' maze placements for synchronization
         this.networkManager.setOnMazePiecePlaced((data) => {
             this.handleOtherPlayerMazePlacement(data);
+        });
+
+        // Tower placement handlers
+        this.networkManager.setOnTowerPlaced((data) => {
+            this.handleTowerPlacementSuccess(data);
+        });
+
+        this.networkManager.setOnTowerPlaceFailed((data) => {
+            this.handleTowerPlacementFailure(data);
         });
 
         // Add spectator update handler (keep existing for compatibility)
@@ -519,7 +509,30 @@ export class MultiplayerGame {
             console.log('🚀 === DEFENSE PHASE STARTED EVENT RECEIVED ===');
             console.log('🚀 Defense phase data from server:', data);
             console.log('🚀 Game mode:', data.gameMode);
+            console.log('🚀 Current turn from server:', data.currentTurn);
             console.log('🚀 Shared path available:', !!data.sharedPath);
+            
+            // CRITICAL: Update turn state first for tower operations
+            if (data.currentTurn && this.localPlayerId) {
+                console.log('🎯 Updating turn state: currentTurn =', data.currentTurn, 'localPlayerId =', this.localPlayerId);
+                
+                // Update turn indicator UI
+                if (this.turnIndicatorUI) {
+                    this.turnIndicatorUI.updateTurn({
+                        currentTurn: data.currentTurn,
+                        gamePhase: data.gamePhase || 'defense',
+                        sharedResources: data.sharedResources
+                    });
+                    this.turnIndicatorUI.updateMyTurn(data.currentTurn === this.localPlayerId);
+                    console.log('🎯 Turn indicator UI updated');
+                }
+                
+                // Update tower input manager turn state
+                if (this.towerInputManager) {
+                    this.towerInputManager.updateTurnState(data.currentTurn, this.localPlayerId, data.gamePhase || 'defense');
+                    console.log('🎯 Tower input manager turn state updated');
+                }
+            }
             
             // Show phase transition UI
             if (this.turnIndicatorUI) {
@@ -821,43 +834,13 @@ export class MultiplayerGame {
 
         // Update enemies
         if (this.enemies.size > 0) {
-            // Log enemy update info every 60 frames (about once per second at 60fps)
+            // Enemy update counter for internal tracking
             if (!this.enemyLogCounter) this.enemyLogCounter = 0;
             this.enemyLogCounter++;
-            
-            if (this.enemyLogCounter % 60 === 0) {
-                console.log(`🔄 === ENEMY UPDATE SUMMARY (Frame ${this.enemyLogCounter}) ===`);
-                console.log(`📊 Total enemies in map: ${this.enemies.size}`);
-                console.log(`🎬 Enemies in scene: ${Array.from(this.enemies.values()).filter(e => e.mesh.parent).length}`);
-                console.log(`❤️ Alive enemies: ${Array.from(this.enemies.values()).filter(e => e.isAlive()).length}`);
-                console.log(`📍 Enemy positions:`, Array.from(this.enemies.entries()).map(([id, enemy]) => ({
-                    id: id,
-                    position: `(${enemy.mesh.position.x.toFixed(1)}, ${enemy.mesh.position.z.toFixed(1)})`,
-                    health: enemy.health
-                })));
-            }
         } else {
-            // Log game phase status every 5 seconds for debugging
+            // Phase counter for internal tracking
             if (!this.phaseLogCounter) this.phaseLogCounter = 0;
             this.phaseLogCounter++;
-            
-            if (this.phaseLogCounter % 300 === 0) {
-                console.log(`🎮 === GAME PHASE STATUS ===`);
-                console.log(`🏗️ Current game phase: ${this.gameState?.currentPhase || 'not initialized'}`);
-                console.log(`🔌 Connected to server: ${this.networkManager.isConnected}`);
-                console.log(`🎯 In session: ${!!this.networkManager.sessionId}`);
-                console.log(`🏃 Game running: ${this.gameRunning || 'not set'}`);
-                console.log(`👾 Enemies count: ${this.enemies.size}`);
-                
-                // Note: Defense handler uses proper NetworkManager callback system
-                // Removed direct socket access to follow proper architecture
-                
-                if (this.gameState?.currentPhase === 'MAZE_BUILDING') {
-                    console.log(`🏗️ Still in building phase - waiting for server to start defense automatically`);
-                } else if (this.gameState?.currentPhase === 'DEFENSE') {
-                    console.log(`⚔️ Defense phase active - enemies should be spawning`);
-                }
-            }
         }
         
         for (const [enemyId, enemy] of this.enemies) {
@@ -866,15 +849,8 @@ export class MultiplayerGame {
                 const allEnemies = Array.from(this.enemies.values()).filter(e => e && e.isAlive());
                 enemy.update(allEnemies);
                 
-                // Check if enemy has reached the end
-                if (enemy.hasReachedEnd()) {
-                    console.log(`💀 Enemy ${enemyId} reached the end, removing from client`);
-                    this.removeEnemy(enemyId);
-                }
-                
-                // Check if enemy is dead
-                if (!enemy.isAlive()) {
-                    console.log(`💀 Enemy ${enemyId} died, removing from client`);
+                // Check if enemy has reached the end or is dead
+                if (enemy.hasReachedEnd() || !enemy.isAlive()) {
                     this.removeEnemy(enemyId);
                 }
             }
@@ -1309,14 +1285,79 @@ export class MultiplayerGame {
             console.log('🔄 Tower selection UI shown');
         }
         
-        // Cleanup maze input
+        // Cleanup maze input and initialize tower input
         if (this.mazeInputManager) {
             this.mazeInputManager.cleanup();
             this.mazeInputManager = null;
             console.log('🔄 Maze input manager cleaned up');
         }
         
+        // Initialize tower input manager for defense phase
+        this.initializeTowerInput();
+        
+        // CRITICAL: Ensure tower input manager has current turn state
+        if (this.towerInputManager && this.gameState) {
+            // Get the most recent turn state from game state or server
+            const currentTurn = this.gameState.currentTurn || 'player1'; // Default to player1 if not set
+            console.log('🔧 Initializing tower input manager with turn state:', currentTurn);
+            this.towerInputManager.updateTurnState(currentTurn, this.localPlayerId, 'defense');
+        }
+        
         console.log('🔄 Defense phase transition complete');
+    }
+
+    /**
+     * Initialize tower input manager for multiplayer defense phase
+     */
+    initializeTowerInput() {
+        if (this.towerInputManager) return; // Already initialized
+        
+        console.log('🏗️ Initializing tower input manager for defense phase...');
+        
+        this.towerInputManager = new MultiplayerTowerInputManager(
+            this.multiplayerScene.scene,
+            this.camera,
+            this.renderer,
+            this.gameState,
+            this.multiplayerScene.ground,
+            this.mazeState,
+            this.gameController ? this.gameController.getActionDispatcher() : null,
+            this.localPlayerId
+        );
+        
+        // Initialize basic towers in the UI
+        const basicTowers = Object.values(TOWER_TYPES);
+        this.towerSelectionUI.updateBasicTowerGrid(basicTowers);
+        
+        // Connect TowerSelectionUI to tower input manager
+        this.towerSelectionUI.setOnTowerSelectedCallback((towerData) => {
+            this.towerInputManager.setSelectedTowerData(towerData);
+        });
+
+        // Connect tower input manager to UI updates
+        this.towerInputManager.setOnTowerMenuUpdateCallback(() => {
+            this.towerSelectionUI.updateTowerMenu();
+        });
+        
+        // Connect tower management callbacks
+        this.towerInputManager.setOnTowerSelectedCallback((tower) => {
+            this.towerManagementUI.showPanel(tower);
+        });
+        
+        this.towerInputManager.setOnTowerDeselectedCallback((tower) => {
+            this.towerManagementUI.hidePanel();
+        });
+        
+        this.towerManagementUI.setOnTowerUpgradeCallback((tower) => {
+            this.towerSelectionUI.updateTowerMenu();
+        });
+        
+        this.towerManagementUI.setOnTowerDestroyCallback((tower) => {
+            // This would need server implementation for cooperative tower destruction
+            console.log('Tower destruction in multiplayer not implemented yet');
+        });
+        
+        console.log('✅ Tower input manager initialized for multiplayer defense phase');
     }
 
     /**
@@ -1390,6 +1431,12 @@ export class MultiplayerGame {
             if (this.mazeBuilderUI) {
                 this.mazeBuilderUI.onShapePlaced();
             }
+            
+            // Refresh tower input manager maze obstacles after maze changes
+            if (this.towerInputManager) {
+                this.towerInputManager.refreshMazeObstacles();
+                console.log('🔄 Tower input manager maze obstacles refreshed after placement');
+            }
         }
     }
 
@@ -1406,32 +1453,94 @@ export class MultiplayerGame {
     }
 
     /**
+     * Handle successful tower placement from server
+     */
+    handleTowerPlacementSuccess(data) {
+        // Create tower in the scene
+        if (data.tower) {
+            this.createTowerFromServerData(data.tower);
+        }
+        
+        // Update shared money if provided
+        if (data.sharedResources) {
+            this.gameState.setMoney(data.sharedResources.money);
+        }
+        
+        // Update tower UI
+        if (this.towerSelectionUI) {
+            this.towerSelectionUI.updateTowerMenu();
+        }
+        
+        this.showGameMessage('Tower placed successfully!', 'success');
+    }
+
+    /**
+     * Handle failed tower placement from server
+     */
+    handleTowerPlacementFailure(data) {
+        let message = 'Tower placement failed';
+        switch (data.reason) {
+            case 'not_your_turn':
+                message = 'Please wait for your turn to place towers';
+                break;
+            case 'insufficient_funds':
+                message = 'Not enough shared money for this tower';
+                break;
+            case 'invalid_position':
+                message = 'Invalid tower placement position';
+                break;
+            case 'out_of_bounds':
+                message = 'Tower must be placed within map bounds';
+                break;
+            case 'must_place_on_maze_block':
+                message = 'Towers must be placed on maze blocks';
+                break;
+            case 'too_close_to_tower':
+                message = 'Too close to another tower';
+                break;
+            default:
+                message = `Tower placement failed: ${data.reason}`;
+        }
+        
+        this.showGameMessage(message, 'error');
+    }
+
+    /**
+     * Create a tower in the scene from server data
+     */
+    createTowerFromServerData(towerData) {
+        // Create tower instance (same as single player)
+        const tower = new Tower(
+            towerData.position.x,
+            towerData.position.y || 1.0,
+            towerData.position.z,
+            towerData.type
+        );
+        
+        // Store additional server data
+        tower.serverId = towerData.id;
+        tower.playerId = towerData.playerId;
+        tower.level = towerData.level || 1;
+        tower.cost = towerData.cost;
+        
+        // Add to scene and towers map
+        this.multiplayerScene.scene.add(tower.mesh);
+        this.towers.set(towerData.id, tower);
+    }
+
+    /**
      * Handle other players' maze placements for state synchronization
      */
     handleOtherPlayerMazePlacement(data) {
-        console.log('🔥 handleOtherPlayerMazePlacement called with data:', data);
-        console.log('🎯 Local player ID:', this.localPlayerId);
-        console.log('🎯 Data player ID:', data.playerId);
-        console.log('🎯 MazeState exists:', !!this.mazeState);
-        console.log('🎯 MazePiece exists:', !!data.mazePiece);
-        console.log('🎯 ShapeData exists:', !!data.shapeData);
-        
         // Only apply if it's NOT our own placement (to avoid double-application)
         if (data.playerId !== this.localPlayerId && this.mazeState && data.mazePiece) {
-            console.log('✅ Applying other player maze placement...');
-            console.log('📍 Positions:', data.mazePiece.positions);
-            console.log('🎨 Shape data:', data.shapeData);
-            
             // Apply the other player's placement to our local maze state
             this.mazeState.applyServerPlacement(data.mazePiece.positions, data.shapeData);
             
-            console.log('✅ Other player maze placement applied successfully');
-        } else {
-            console.log('❌ Skipping maze placement:', {
-                isOwnPlacement: data.playerId === this.localPlayerId,
-                hasMazeState: !!this.mazeState,
-                hasMazePiece: !!data.mazePiece
-            });
+            // Refresh tower input manager maze obstacles after other player's placement
+            if (this.towerInputManager) {
+                this.towerInputManager.refreshMazeObstacles();
+            }
         }
     }
 
@@ -1492,6 +1601,11 @@ export class MultiplayerGame {
         if (this.mazeInputManager) {
             this.mazeInputManager.cleanup?.();
             this.mazeInputManager = null;
+        }
+        
+        if (this.towerInputManager) {
+            this.towerInputManager.cleanup?.();
+            this.towerInputManager = null;
         }
         
         // Cleanup controls
@@ -1582,7 +1696,6 @@ export class MultiplayerGame {
                 enemy.setState(enemyUpdate.state);
             }
 
-            console.log(`Enemy ${enemyId} updated from server:`, enemyUpdate);
         } else {
             console.warn(`Enemy with ID ${enemyId} not found in local enemies map.`);
         }
@@ -1597,9 +1710,8 @@ export class MultiplayerGame {
             enemy.cleanup(); // Call cleanup on the enemy object
             this.multiplayerScene.scene.remove(enemy.mesh);
             this.enemies.delete(enemyId);
-            console.log(`Enemy ${enemyId} removed from scene and map.`);
         } else {
             console.warn(`Attempted to remove enemy with ID ${enemyId} but it was not found.`);
         }
     }
-} 
+}

@@ -34,7 +34,7 @@ export class ActionDispatcher {
             throw new Error('NetworkManager not available');
         }
         
-        this.networkManager.placeTower(position.x, position.y, towerType);
+        this.networkManager.placeTower(position.x, position.z, towerType);
     }
     
     upgradeTower(towerId) {

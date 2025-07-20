@@ -29,6 +29,15 @@ export class NetworkManager {
         this.onGameMessage = null;
         this.onMazePlaced = null;
         this.onMazePlaceFailed = null;
+        this.onMazePiecePlaced = null;
+        
+        // Tower callbacks
+        this.onTowerPlaced = null;
+        this.onTowerPlaceFailed = null;
+        this.onTowerUpgraded = null;
+        this.onTowerUpgradeFailed = null;
+        this.onTowerSold = null;
+        this.onTowerSellFailed = null;
         
         // Connection monitoring
         this.pingInterval = null;
@@ -58,12 +67,10 @@ export class NetworkManager {
         this.isWaveInProgress = false;
     }
     
-    // Connect to the multiplayer server
     connect(serverUrl = 'http://localhost:4000') {
         if (this.isConnected) {
             return;
         }
-
         
         this.socket = io(serverUrl, {
             transports: ['websocket', 'polling'],
@@ -75,11 +82,10 @@ export class NetworkManager {
         });
         
         this.setupEventListeners();
-        this.setupDeferredEventListeners(); // Register any callbacks that were set before connect
+        this.setupDeferredEventListeners();
         this.startPingMonitoring();
     }
     
-    // Disconnect from the server
     disconnect() {
         if (this.socket) {
             this.socket.disconnect();
@@ -87,9 +93,7 @@ export class NetworkManager {
         this.cleanup();
     }
     
-    // Setup all Socket.IO event listeners
     setupEventListeners() {
-        // Connection events
         this.socket.on('connect', () => {
             this.isConnected = true;
             this.reconnectAttempts = 0;
@@ -99,7 +103,6 @@ export class NetworkManager {
         this.socket.on('player:connected', (data) => {
             this.playerId = data.playerId;
             
-            // Set a custom player name if we have one
             if (this.playerName) {
                 this.updatePlayerProfile({ name: this.playerName });
             }
@@ -110,7 +113,6 @@ export class NetworkManager {
         });
         
         this.socket.on('player:error', (data) => {
-            console.error('Player error:', data);
             if (this.onError) this.onError(data);
         });
         
@@ -118,19 +120,16 @@ export class NetworkManager {
             this.isConnected = false;
             if (this.onDisconnected) this.onDisconnected(reason);
             
-            // Attempt reconnection for client-side disconnects
             if (reason === 'io client disconnect') {
                 this.attemptReconnection();
             }
         });
         
         this.socket.on('connect_error', (error) => {
-            console.error('Connection error:', error);
             if (this.onError) this.onError(error);
             this.attemptReconnection();
         });
         
-        // Game session events
         this.socket.on('session:created', (data) => {
             this.sessionId = data.sessionId;
             this.playerId = data.player.id;
@@ -142,25 +141,18 @@ export class NetworkManager {
             this.sessionId = data.sessionId;
             this.playerId = data.player.id;
             this.isHost = false;
-            
-            console.log('🏠 SESSION JOINED - Debug info:');
-            console.log('🏠 Session ID:', data.sessionId);
-            console.log('🏠 Player ID:', data.player.id);
-            console.log('🏠 Socket rooms:', Array.from(this.socket.rooms || []));
-            
             if (this.onSessionJoined) this.onSessionJoined(data);
         });
         
         this.socket.on('session:joined_as_spectator', (data) => {
             this.sessionId = data.sessionId;
-            this.playerId = null; // Spectators don't have a player ID
+            this.playerId = null;
             this.isHost = false;
-            this.isSpectator = true; // Add flag to track spectator status
+            this.isSpectator = true;
             if (this.onSessionJoined) this.onSessionJoined(data);
         });
         
         this.socket.on('session:error', (data) => {
-            console.error('Session error:', data);
             if (this.onError) this.onError(data);
         });
         
@@ -173,11 +165,9 @@ export class NetworkManager {
         });
         
         this.socket.on('game:error', (data) => {
-            console.error('Game error:', data);
             if (this.onError) this.onError(data);
         });
         
-        // Game state synchronization
         this.socket.on('game_state_update', (data) => {
             if (this.onGameStateUpdate) this.onGameStateUpdate(data);
         });
@@ -186,23 +176,16 @@ export class NetworkManager {
             if (this.onGameEvent) this.onGameEvent(data);
         });
         
-        // Ping/latency monitoring
         this.socket.on('pong', (timestamp) => {
             this.latency = Date.now() - timestamp;
             this.updateConnectionQuality();
         });
         
-        // Error handling
         this.socket.on('error', (error) => {
-            console.error('Socket error:', error);
             if (this.onError) this.onError(error);
         });
 
-        // Matchmaking events
         this.socket.on('matchmaking:error', (error) => {
-            console.error('Matchmaking error:', error);
-            
-            // Don't treat queued status as an error
             if (error.message === 'queued') {
                 if (this.onMatchmakingUpdate) {
                     this.onMatchmakingUpdate({
@@ -232,7 +215,6 @@ export class NetworkManager {
         this.socket.on('matchmaking:matched', (data) => {
             this.isInMatchmaking = false;
             
-            // Trigger the match found callback for UI updates
             if (this.onMatchFound) {
                 this.onMatchFound({
                     sessionId: data.sessionId,
@@ -240,7 +222,6 @@ export class NetworkManager {
                 });
             }
             
-            // Also update matchmaking status
             if (this.onMatchmakingUpdate) {
                 this.onMatchmakingUpdate({
                     status: 'matched',
@@ -249,17 +230,12 @@ export class NetworkManager {
                 });
             }
             
-            // Store sessionId for reference (server already added us to session)
             const sessionId = data.sessionId;
             
             if (sessionId) {
-                // Don't call joinSession() - server already added us during matchmaking
                 this.sessionId = sessionId;
-            } else {
-                console.error('No session ID provided in match data:', data);
-                if (this.onError) {
-                    this.onError({ message: 'Invalid match data: missing session ID' });
-                }
+            } else if (this.onError) {
+                this.onError({ message: 'Invalid match data: missing session ID' });
             }
         });
 
@@ -282,7 +258,6 @@ export class NetworkManager {
             }
         });
 
-        // Maze placement events for cooperative mode
         this.socket.on('maze:placed', (data) => {
             if (this.onMazePlaced) {
                 this.onMazePlaced(data);
@@ -295,32 +270,62 @@ export class NetworkManager {
             }
         });
 
-        // Cooperative mode: Other players' maze placements
         this.socket.on('maze:piece_placed', (data) => {
             if (this.onMazePiecePlaced) {
                 this.onMazePiecePlaced(data);
             }
         });
+
+        this.socket.on('tower:placed', (data) => {
+            if (this.onTowerPlaced) {
+                this.onTowerPlaced(data);
+            }
+        });
+
+        this.socket.on('tower:place_failed', (data) => {
+            if (this.onTowerPlaceFailed) {
+                this.onTowerPlaceFailed(data);
+            }
+        });
+
+        this.socket.on('tower:upgraded', (data) => {
+            if (this.onTowerUpgraded) {
+                this.onTowerUpgraded(data);
+            }
+        });
+
+        this.socket.on('tower:upgrade_failed', (data) => {
+            if (this.onTowerUpgradeFailed) {
+                this.onTowerUpgradeFailed(data);
+            }
+        });
+
+        this.socket.on('tower:sold', (data) => {
+            if (this.onTowerSold) {
+                this.onTowerSold(data);
+            }
+        });
+
+        this.socket.on('tower:sell_failed', (data) => {
+            if (this.onTowerSellFailed) {
+                this.onTowerSellFailed(data);
+            }
+        });
     }
     
-    // Create a new multiplayer session
     createSession() {
         if (!this.isConnected) {
-            console.error('Cannot create session: not connected to server');
             return;
         }
         
         this.socket.emit('session:create');
     }
     
-    // Join an existing session by ID
     joinSession(sessionId, playerName = null) {
         if (!this.isConnected) {
-            console.error('Cannot join session: not connected to server');
             return;
         }
         
-        // Use stored player name or generate default
         const finalPlayerName = playerName || this.playerName || `Player_${this.socket.id.slice(0, 6)}`;
         this.socket.emit('session:join', { 
             sessionId,
@@ -328,7 +333,6 @@ export class NetworkManager {
         });
     }
     
-    // Leave the current session
     leaveSession() {
         if (!this.isConnected || !this.sessionId) return;
         
@@ -338,18 +342,15 @@ export class NetworkManager {
         this.isHost = false;
     }
     
-    // Send game events to the server
     sendGameEvent(eventType, data) {
         if (!this.isConnected || !this.sessionId) return;
         
-        // Send specific events that match server expectations
         this.socket.emit(eventType, {
             ...data,
             timestamp: Date.now()
         });
     }
     
-    // Send player actions
     sendPlayerAction(actionType, actionData) {
         this.socket.emit('player:action', {
             actionType,
@@ -359,10 +360,10 @@ export class NetworkManager {
         });
     }
     
-    // Specific game actions
-    placeTower(x, y, towerType) {
+    placeTower(x, z, towerType) {
         this.socket.emit('tower:place', {
-            x, y, towerType,
+            type: towerType,
+            position: { x, z },
             playerId: this.playerId,
             timestamp: Date.now()
         });
@@ -399,40 +400,17 @@ export class NetworkManager {
             timestamp: Date.now()
         });
     }
-    
-    // Removed: startDefensePhase() method - no longer needed in multiplayer
-    // Defense phase starts automatically when server detects all shapes are placed
 
     setOnDefensePhaseStarted(callback) {
-        // Store callback for when socket connects
         this.onDefenseStarted = callback;
-        
-        if (!this.socket) {
-            console.log('🔧 NetworkManager: Socket not ready, will register defense listener on connect');
-            return;
-        }
-
-        // Event listener is now registered in setupDeferredEventListeners() after socket connects
-        
-        console.log('✅ NetworkManager: game:defense_started listener registered');
+        if (!this.socket) return;
     }
 
     setOnEnemySpawned(callback) {
-        // Store callback for when socket connects
         this.onEnemySpawned = callback;
-        
-        console.log('🔧 NetworkManager: setOnEnemySpawned callback registered');
-        if (!this.socket) {
-            console.warn('⚠️ NetworkManager: No socket available - will register enemy spawn handler on connect');
-            return;
-        }
-
-        // Event listener is now registered in setupDeferredEventListeners() after socket connects
-        
-        console.log('✅ NetworkManager: game:enemy_spawned event listener attached');
+        if (!this.socket) return;
     }
 
-    // Cooperative mode event handlers
     setOnTurnChanged(callback) {
         this.onTurnChanged = callback;
         if (!this.socket) return;
@@ -446,7 +424,6 @@ export class NetworkManager {
                     sharedResources: data.sharedResources
                 });
             }
-            // Also trigger general game state update
             if (this.onGameStateUpdate) {
                 this.onGameStateUpdate(data);
             }
@@ -476,6 +453,30 @@ export class NetworkManager {
         this.onMazePiecePlaced = callback;
     }
 
+    setOnTowerPlaced(callback) {
+        this.onTowerPlaced = callback;
+    }
+
+    setOnTowerPlaceFailed(callback) {
+        this.onTowerPlaceFailed = callback;
+    }
+
+    setOnTowerUpgraded(callback) {
+        this.onTowerUpgraded = callback;
+    }
+
+    setOnTowerUpgradeFailed(callback) {
+        this.onTowerUpgradeFailed = callback;
+    }
+
+    setOnTowerSold(callback) {
+        this.onTowerSold = callback;
+    }
+
+    setOnTowerSellFailed(callback) {
+        this.onTowerSellFailed = callback;
+    }
+
     setOnPathsUpdated(callback) {
         this.onPathsUpdated = callback;
         if (!this.socket) return;
@@ -487,20 +488,17 @@ export class NetworkManager {
         });
     }
     
-    // Matchmaking methods
     startQuickMatch() {
         if (!this.isConnected) {
-            console.error('Cannot start matchmaking: not connected to server');
             return;
         }
 
         if (this.isInMatchmaking) {
-            console.warn('Already in matchmaking queue');
             return;
         }
 
         this.socket.emit('matchmaking:quick_match', {
-            rating: 1000, // Default rating for now
+            rating: 1000,
             playerName: this.playerName || `Player_${this.socket.id.slice(0, 6)}`
         });
         this.isInMatchmaking = true;
@@ -508,7 +506,6 @@ export class NetworkManager {
 
     cancelMatchmaking() {
         if (!this.isConnected || !this.isInMatchmaking) {
-            console.warn('Not in matchmaking queue');
             return;
         }
 
@@ -516,69 +513,29 @@ export class NetworkManager {
         this.isInMatchmaking = false;
     }
     
-    // Ping monitoring for connection quality
     startPingMonitoring() {
         this.pingInterval = setInterval(() => {
             if (this.socket && this.isConnected) {
                 this.lastPingTime = Date.now();
                 this.socket.emit('ping', this.lastPingTime);
             }
-        }, 5000); // Ping every 5 seconds
+        }, 5000);
     }
 
-    // Setup event listeners that were registered before socket connection
     setupDeferredEventListeners() {
-        console.log('🔧 NetworkManager: Setting up deferred event listeners');
-        
-        // Defense phase handler
         if (this.onDefenseStarted) {
-            console.log('🔧 NetworkManager: Registering deferred defense started listener');
             this.socket.on('game:defense_started', (data) => {
-                console.log('📨 ===== DEFENSE STARTED EVENT RECEIVED =====');
-                console.log('📨 Raw event data:', data);
-                console.log('📨 Event timestamp:', data.timestamp);
-                console.log('📨 Callback available:', !!this.onDefenseStarted);
-                
                 if (this.onDefenseStarted) {
-                    console.log('📨 Calling defense started callback...');
                     this.onDefenseStarted(data);
-                    console.log('📨 Defense started callback completed');
-                } else {
-                    console.error('❌ No callback registered for defense started event!');
                 }
-                console.log('📨 ===== DEFENSE STARTED EVENT PROCESSED =====');
-            });
-            
-            // DEBUG: Test if socket can receive ANY room events
-            this.socket.on('test_room_event', (data) => {
-                console.log('🧪 TEST: Received room event!', data);
             });
         }
         
-        // Enemy spawn handler
         if (this.onEnemySpawned) {
-            console.log('🔧 NetworkManager: Registering deferred enemy spawn listener');
             this.socket.on('game:enemy_spawned', (data) => {
-                console.log('📨 ===== ENEMY SPAWN EVENT RECEIVED =====');
-                console.log('📨 NetworkManager: Received game:enemy_spawned event');
-                console.log('📨 Event timestamp:', data.timestamp);
-                console.log('📨 Enemy data received:', {
-                    id: data.enemy?.id,
-                    type: data.enemy?.type,
-                    health: data.enemy?.health,
-                    position: data.enemy?.position,
-                    pathLength: data.enemy?.path ? data.enemy.path.length : 'none'
-                });
-                console.log('📨 Raw data:', data);
-                
                 if (this.onEnemySpawned) {
-                    console.log('🎯 NetworkManager: Calling enemy spawn callback with data');
                     this.onEnemySpawned(data);
-                    console.log('✅ NetworkManager: Enemy spawn callback completed');
-                } else {
-                    console.warn('⚠️ NetworkManager: No callback provided for enemy spawn');
                 }
-                console.log('📨 ===== ENEMY SPAWN EVENT PROCESSED =====');
             });
         }
     }
@@ -586,7 +543,6 @@ export class NetworkManager {
     stopPingMonitoring() {
     }
     
-    // Update connection quality based on latency
     updateConnectionQuality() {
         if (this.latency <= 50) {
             this.connectionQuality = 'excellent';
@@ -599,7 +555,6 @@ export class NetworkManager {
         }
     }
     
-    // Get connection status display
     getConnectionStatus() {
         const qualityIcons = {
             excellent: '●●●●',
@@ -616,10 +571,8 @@ export class NetworkManager {
         };
     }
     
-    // Attempt to reconnect to the server
     attemptReconnection() {
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.error('Max reconnection attempts reached');
             return;
         }
         
@@ -631,15 +584,12 @@ export class NetworkManager {
         }, 1000 * this.reconnectAttempts);
     }
 
-    // Update player profile
     updatePlayerProfile(data) {
         if (this.isConnected && this.playerId) {
             this.socket.emit('player:update_profile', {
                 playerId: this.playerId,
                 ...data
             });
-        } else {
-            console.warn('Cannot update player profile: not connected or no playerId');
         }
     }
 
@@ -650,7 +600,6 @@ export class NetworkManager {
         }
     }
     
-    // High Priority Updates - Immediate Sync
     sendMazeUpdate(mazeData) {
         this.socket.emit('maze_update', {
             type: 'maze_piece',
@@ -677,9 +626,7 @@ export class NetworkManager {
         });
     }
 
-    // Medium Priority Updates - Batched
     sendEnemySpawn(enemyData) {
-        // Send minimal spawn data
         this.socket.emit('enemy_spawn', {
             id: enemyData.id,
             type: enemyData.type,
@@ -689,7 +636,6 @@ export class NetworkManager {
         });
     }
 
-    // Low Priority Updates - Optimized
     syncEnemyStates(enemies) {
         const now = Date.now();
         if (now - this.lastEnemySync < this.enemySyncInterval) return;
@@ -698,7 +644,6 @@ export class NetworkManager {
         enemies.forEach(enemy => {
             const lastState = this.lastSentEnemyStates.get(enemy.id);
             
-            // Calculate significant changes
             const hasSignificantChange = this.hasSignificantStateChange(enemy, lastState);
             
             if (hasSignificantChange) {
@@ -706,7 +651,6 @@ export class NetworkManager {
                     id: enemy.id,
                     pathIndex: enemy.currentPathIndex,
                     health: enemy.health,
-                    // Only include position if significantly different
                     position: hasSignificantChange.includePosition ? {
                         x: enemy.mesh.position.x,
                         y: enemy.mesh.position.y,
@@ -755,10 +699,8 @@ export class NetworkManager {
         return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
-    // Handle incoming state updates
     setupStateHandlers() {
         this.socket.on('enemy_states', (data) => {
-            // Apply received enemy updates with interpolation
             data.updates.forEach(update => {
                 const enemy = this.gameState.enemies.get(update.id);
                 if (enemy) {
@@ -778,9 +720,8 @@ export class NetworkManager {
 
     interpolateEnemyPosition(enemy, newPosition, timestamp) {
         const latency = Date.now() - timestamp;
-        const interpolationTime = 100; // ms
+        const interpolationTime = 100;
         
-        // Create interpolation data
         enemy.interpolation = {
             startPosition: enemy.mesh.position.clone(),
             targetPosition: new THREE.Vector3(
@@ -793,39 +734,27 @@ export class NetworkManager {
         };
     }
 
-    // Server messages for wave synchronization
     setupWaveHandlers() {
-        // Receive wave data from server
         this.socket.on('wave_data', (data) => {
             this.waveData = data;
         });
 
-        // Wave start signal
         this.socket.on('wave_start', (data) => {
             this.currentWave = data.waveNumber;
             this.isWaveInProgress = true;
-            
-            // Notify game to start spawning
             this.onWaveStart?.(data);
         });
 
-        // Wave end signal
         this.socket.on('wave_end', (data) => {
             this.isWaveInProgress = false;
-            
-            // Notify game to stop spawning
             this.onWaveEnd?.(data);
-            console.log('Wave ended:', data.waveNumber);
         });
 
-        // Individual enemy spawn signal
         this.socket.on('enemy_spawn_signal', (data) => {
-            // Signal the game to spawn this specific enemy
             this.onEnemySpawnSignal?.(data);
         });
     }
 
-    // Client can request to start wave when ready
     requestWaveStart() {
         if (!this.isWaveInProgress) {
             this.socket.emit('request_wave_start', {
@@ -834,14 +763,12 @@ export class NetworkManager {
         }
     }
 
-    // Set wave callbacks
     setWaveCallbacks(callbacks) {
         this.onWaveStart = callbacks.onWaveStart;
         this.onWaveEnd = callbacks.onWaveEnd;
         this.onEnemySpawnSignal = callbacks.onEnemySpawnSignal;
     }
 
-    // Report wave completion
     reportWaveComplete(stats) {
         this.socket.emit('wave_complete', {
             waveNumber: this.currentWave,
@@ -851,7 +778,6 @@ export class NetworkManager {
         });
     }
 
-    // Get current wave status
     getWaveStatus() {
         return {
             currentWave: this.currentWave,
@@ -860,7 +786,6 @@ export class NetworkManager {
         };
     }
 
-    // Cleanup resources
     cleanup() {
         if (this.pingInterval) {
             clearInterval(this.pingInterval);
@@ -880,7 +805,6 @@ export class NetworkManager {
         this.lastSentTowerStates.clear();
     }
     
-    // Event callback setters
     setOnConnected(callback) { this.onConnected = callback; }
     setOnDisconnected(callback) { this.onDisconnected = callback; }
     setOnError(callback) { this.onError = callback; }
