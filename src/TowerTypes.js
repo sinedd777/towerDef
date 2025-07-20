@@ -12,26 +12,17 @@ export const TOWER_TYPES = {
         name: 'Basic Tower',
         description: 'Balanced tower with medium range and damage',
         cost: 20,
-        color: 0x4444ff,
+        color: 0x888888, // Changed to grey
         range: 4.0,
         damage: 12,
         fireRate: 1.0,
         upgrade: {
-            damageMultiplier: 1.5,   // +50% damage per level
-            fireRateMultiplier: 1.25, // +25% fire rate per level
-            costMultiplier: [1.5, 2.0], // Level 2: 1.5x, Level 3: 2x base cost
+            damageMultiplier: 1.5,
+            fireRateMultiplier: 1.25,
+            costMultiplier: [1.5, 2.0],
             maxLevel: 3
         },
-        model: {
-            base: {
-                geometry: new THREE.CylinderGeometry(0.3, 0.4, 1.0, 8),
-                material: new THREE.MeshStandardMaterial({ map: BRICK_TEX, roughness: 0.9 })
-            },
-            barrel: {
-                geometry: new THREE.CylinderGeometry(0.1, 0.1, 0.8, 6),
-                material: new THREE.MeshStandardMaterial({ map: METAL_TEX, metalness: 0.6, roughness: 0.3 })
-            }
-        }
+        weaponModel: 'enemy-ufo-a-weapon'
     },
     
     SNIPER: {
@@ -39,7 +30,7 @@ export const TOWER_TYPES = {
         name: 'Sniper Tower',
         description: 'Long range, high damage, slow fire rate',
         cost: 40,
-        color: 0xffff00,
+        color: 0x888888,
         range: 8.0,
         damage: 20,
         fireRate: 0.5,
@@ -49,16 +40,7 @@ export const TOWER_TYPES = {
             costMultiplier: [1.5, 2.0],
             maxLevel: 3
         },
-        model: {
-            base: {
-                geometry: new THREE.CylinderGeometry(0.25, 0.35, 1.5, 8),
-                material: new THREE.MeshStandardMaterial({ map: BRICK_TEX, roughness: 0.8 })
-            },
-            barrel: {
-                geometry: new THREE.CylinderGeometry(0.08, 0.08, 1.2, 6),
-                material: new THREE.MeshStandardMaterial({ map: METAL_TEX, metalness: 0.7, roughness: 0.2 })
-            }
-        }
+        weaponModel: 'weapon-ballista'
     },
     
     RAPID: {
@@ -66,7 +48,7 @@ export const TOWER_TYPES = {
         name: 'Rapid Tower',
         description: 'Fast firing, low damage, short range',
         cost: 30,
-        color: 0x00ff00,
+        color: 0x888888,
         range: 3.0,
         damage: 6,
         fireRate: 3.0,
@@ -76,16 +58,7 @@ export const TOWER_TYPES = {
             costMultiplier: [1.5, 2.0],
             maxLevel: 3
         },
-        model: {
-            base: {
-                geometry: new THREE.CylinderGeometry(0.35, 0.45, 0.8, 8),
-                material: new THREE.MeshStandardMaterial({ map: BRICK_TEX, roughness: 0.85 })
-            },
-            barrel: {
-                geometry: new THREE.CylinderGeometry(0.12, 0.12, 0.6, 6),
-                material: new THREE.MeshStandardMaterial({ map: METAL_TEX, metalness: 0.6, roughness: 0.25 })
-            }
-        }
+        weaponModel: 'weapon-turret'
     },
     
     AREA: {
@@ -93,7 +66,7 @@ export const TOWER_TYPES = {
         name: 'Area Tower',
         description: 'Deals periodic area damage to all enemies in range',
         cost: 35,
-        color: 0xff00ff,
+        color: 0x888888,
         range: 3.5,
         damage: 8,
         fireRate: 2.0,
@@ -104,16 +77,7 @@ export const TOWER_TYPES = {
             costMultiplier: [1.5, 2.0],
             maxLevel: 3
         },
-        model: {
-            base: {
-                geometry: new THREE.CylinderGeometry(0.4, 0.5, 0.9, 8),
-                material: new THREE.MeshStandardMaterial({ map: BRICK_TEX, roughness: 0.8 })
-            },
-            barrel: {
-                geometry: new THREE.CylinderGeometry(0.15, 0.15, 0.5, 6),
-                material: new THREE.MeshStandardMaterial({ map: METAL_TEX, metalness: 0.7, roughness: 0.3 })
-            }
-        }
+        weaponModel: 'snow-detail-crystal-large'
     }
 };
 

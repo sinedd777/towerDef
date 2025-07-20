@@ -1,4 +1,5 @@
 import { debugLog } from '../config/DebugConfig.js';
+import { TOWER_TYPES } from '../TowerTypes.js';
 
 export class TowerSelectionUI {
     constructor(gameState) {
@@ -6,13 +7,137 @@ export class TowerSelectionUI {
         this.selectedTowerData = null;
         this.onTowerSelectedCallback = null;
         
+        // Define tower weapon images with correct preview paths
+        this.towerImages = {
+            basic: '/kenney_tower-defense-kit/Previews/enemy-ufo-a-weapon.png',
+            sniper: '/kenney_tower-defense-kit/Previews/weapon-ballista.png',
+            rapid: '/kenney_tower-defense-kit/Previews/weapon-turret.png',
+            area: '/kenney_tower-defense-kit/Previews/snow-detail-crystal-large.png'
+        };
+        
         this.initializeStyles();
         this.createTowerSelectionUI();
     }
 
     initializeStyles() {
-        // Styles are now handled by external CSS in index.html
-        // This prevents conflicts between internal and external styling
+        const style = document.createElement('style');
+        style.textContent = `
+            .tower-slot {
+                position: relative;
+                width: 80px;
+                height: 80px;
+                margin: 5px;
+                cursor: pointer;
+                transition: transform 0.2s;
+                border: 2px solid rgba(255, 255, 255, 0.2);
+                border-radius: 8px;
+                background: rgba(30, 30, 40, 0.9);
+                overflow: visible;
+            }
+            
+            .tower-slot:hover {
+                transform: translateY(-2px);
+                border-color: rgba(255, 255, 255, 0.4);
+            }
+            
+            .tower-slot.selected {
+                border-color: #4CAF50;
+                box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+            }
+            
+            .tower-icon {
+                width: 100%;
+                height: 100%;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                position: relative;
+                background-size: 80%;
+                background-position: center;
+                background-repeat: no-repeat;
+                padding: 5px;
+            }
+            
+            .tower-cost {
+                position: absolute;
+                bottom: 5px;
+                right: 5px;
+                background: rgba(0, 0, 0, 0.7);
+                color: white;
+                padding: 2px 6px;
+                border-radius: 10px;
+                font-size: 12px;
+            }
+            
+            .tower-tooltip {
+                position: absolute;
+                bottom: 105%;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(20, 20, 30, 0.95);
+                padding: 12px;
+                border-radius: 8px;
+                width: 180px;
+                display: none;
+                z-index: 1000;
+                pointer-events: none;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+            }
+            
+            .tower-slot:hover .tower-tooltip {
+                display: block;
+            }
+            
+            .tower-tooltip-header {
+                margin-bottom: 8px;
+                padding-bottom: 8px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            }
+            
+            .tower-tooltip-name {
+                font-weight: bold;
+                color: white;
+                font-size: 14px;
+                margin-bottom: 4px;
+            }
+            
+            .tower-tooltip-description {
+                font-size: 12px;
+                color: rgba(255, 255, 255, 0.7);
+                margin: 5px 0;
+                line-height: 1.4;
+            }
+            
+            .tower-tooltip-stats {
+                display: grid;
+                grid-template-columns: auto 1fr;
+                gap: 4px 8px;
+                font-size: 12px;
+                color: rgba(255, 255, 255, 0.9);
+                margin-top: 8px;
+            }
+            
+            .stat-label {
+                color: rgba(255, 255, 255, 0.6);
+            }
+            
+            .stat-value {
+                color: #4CAF50;
+                text-align: right;
+            }
+            
+            .cannot-afford {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+            
+            .cannot-afford:hover {
+                transform: none;
+            }
+        `;
+        
+        document.head.appendChild(style);
     }
 
     createTowerSelectionUI() {
@@ -64,7 +189,12 @@ export class TowerSelectionUI {
     createTowerIcon(tower) {
         const icon = document.createElement('div');
         icon.className = 'tower-icon';
-        icon.style.backgroundColor = '#' + tower.color.toString(16).padStart(6, '0');
+        
+        // Set background image based on tower type
+        const imagePath = this.towerImages[tower.id];
+        if (imagePath) {
+            icon.style.backgroundImage = `url(${imagePath})`;
+        }
         
         const cost = document.createElement('div');
         cost.className = 'tower-cost';
@@ -78,27 +208,26 @@ export class TowerSelectionUI {
         const tooltip = document.createElement('div');
         tooltip.className = 'tower-tooltip';
         
-        const tooltipHeader = document.createElement('div');
-        tooltipHeader.className = 'tower-tooltip-header';
-        tooltipHeader.innerHTML = `
-            <div class="tower-tooltip-name">${tower.name}</div>
+        const towerConfig = TOWER_TYPES[tower.id.toUpperCase()];
+        
+        tooltip.innerHTML = `
+            <div class="tower-tooltip-header">
+                <div class="tower-tooltip-name">${towerConfig.name}</div>
+                <div class="tower-tooltip-description">${towerConfig.description}</div>
+            </div>
+            <div class="tower-tooltip-stats">
+                <div class="stat-label">Damage:</div>
+                <div class="stat-value">${towerConfig.damage}</div>
+                <div class="stat-label">Fire Rate:</div>
+                <div class="stat-value">${towerConfig.fireRate}/s</div>
+                <div class="stat-label">Range:</div>
+                <div class="stat-value">${towerConfig.range}</div>
+                ${towerConfig.splashRadius ? `
+                    <div class="stat-label">Area:</div>
+                    <div class="stat-value">${towerConfig.splashRadius}</div>
+                ` : ''}
+            </div>
         `;
-        
-        const tooltipDescription = document.createElement('div');
-        tooltipDescription.className = 'tower-tooltip-description';
-        tooltipDescription.textContent = tower.description;
-        
-        const tooltipStats = document.createElement('div');
-        tooltipStats.className = 'tower-tooltip-stats';
-        tooltipStats.innerHTML = `
-            <div>Range: ${tower.range}</div>
-            <div>Damage: ${tower.damage}</div>
-            <div>Rate: ${tower.fireRate}/s</div>
-        `;
-        
-        tooltip.appendChild(tooltipHeader);
-        tooltip.appendChild(tooltipDescription);
-        tooltip.appendChild(tooltipStats);
         
         return tooltip;
     }
