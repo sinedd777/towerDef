@@ -18,6 +18,10 @@ export class GameState {
         this.currentPhase = 'MAZE_BUILDING';
         this.mazeCompleted = false;
         
+        // Track when to give new shapes
+        this.lastShapeWave = 0;
+        this.wavesPerShape = 1; // Changed from 5 to 1
+        
         // DOM element references
         this.moneyElement = document.getElementById('money');
         this.scoreElement = document.getElementById('score');
@@ -67,6 +71,12 @@ export class GameState {
             this.waveCooldownEnd = Date.now() + this.waveDelay;
             this.addMoney(50); // Wave completion bonus
             this.addScore(500);
+            
+            // Check if we should give a new shape
+            if (this.shouldGiveNewShape()) {
+                this.lastShapeWave = this.wave;
+                this.resetToMazeBuildingPhase();
+            }
         }
         this.updateHUD();
     }
@@ -168,6 +178,9 @@ export class GameState {
         this.currentPhase = 'DEFENSE';
         this.mazeCompleted = true;
         this.updateHUD();
+        
+        // Dispatch phase change event
+        document.dispatchEvent(new CustomEvent('phaseChanged', { detail: 'DEFENSE' }));
         console.log('Defense phase started!');
     }
 
@@ -175,6 +188,9 @@ export class GameState {
         this.currentPhase = 'MAZE_BUILDING';
         this.mazeCompleted = false;
         this.updateHUD();
+        
+        // Dispatch phase change event
+        document.dispatchEvent(new CustomEvent('phaseChanged', { detail: 'MAZE_BUILDING' }));
     }
     
     // Save game state
@@ -214,5 +230,9 @@ export class GameState {
             this.waveCooldownEnd = data.waveCooldownEnd || 0;
             this.updateHUD();
         }
+    }
+
+    shouldGiveNewShape() {
+        return this.wave > this.lastShapeWave;  // Changed to give a shape after every wave
     }
 } 

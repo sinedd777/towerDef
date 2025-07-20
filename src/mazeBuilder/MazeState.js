@@ -505,14 +505,33 @@ export class MazeState {
         return this.placedShapes.length > 0;
     }
 
-    // Transition to defense phase
+    // Add new method to generate a new shape
+    addNewShape() {
+        // Generate a single new shape
+        const newShape = generateShapeHand(1)[0];
+        this.currentShapeHand.push(newShape);
+        console.log('Added new shape:', newShape.name);
+    }
+
+    // Modify startDefense to clear selection
     startDefense() {
         this.isBuilding = false;
         this.clearPreview();
         this.selectedShape = null;
+        this.currentShapeHand = []; // Clear any remaining shapes
         
         // Optionally hide UI elements
         return this.getObstacles();
+    }
+
+    // Add method to prepare for building phase
+    prepareForBuilding() {
+        this.isBuilding = true;
+        this.clearPreview();
+        this.selectedShape = null;
+        this.currentShapeHand = []; // Clear any existing shapes first
+        this.addNewShape(); // Add a new shape when preparing for building
+        console.log('Prepared for building phase, current hand:', this.currentShapeHand.map(s => s.name));
     }
 
     // Apply placement received from server (for multiplayer synchronization)

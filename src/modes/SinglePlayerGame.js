@@ -124,6 +124,13 @@ export class SinglePlayerGame {
         this.mazeBuilderUI.setOnStartDefenseCallback(() => {
             this.startDefensePhase();
         });
+
+        // Listen for phase changes
+        document.addEventListener('phaseChanged', (event) => {
+            if (event.detail === 'MAZE_BUILDING') {
+                this.startBuildingPhase();
+            }
+        });
     }
 
     initializeMazeInput() {
@@ -274,6 +281,43 @@ export class SinglePlayerGame {
         this.environmentManager.initializeEnvironment(obstacles, this.enemyStartPosition, this.enemyEndPosition);
         
         console.log('Defense phase started');
+    }
+
+    startBuildingPhase() {
+        console.log('Starting building phase...');
+        
+        // Hide tower selection UI
+        this.towerSelectionUI.hide();
+        
+        // Prepare maze state for building
+        this.mazeState.prepareForBuilding();
+        
+        // Show maze builder UI
+        this.mazeBuilderUI.show();
+        
+        // Cleanup tower input and initialize maze input
+        if (this.inputManager) {
+            this.inputManager.destroy();
+            this.inputManager = null;
+        }
+        
+        this.initializeMazeInput();
+        
+        // Update path visualization
+        const obstacles = this.getAllObstacles();
+        const currentPath = this.pathfinding.findPath(
+            { x: this.enemyStartPosition.x, z: this.enemyStartPosition.z },
+            { x: this.enemyEndPosition.x, z: this.enemyEndPosition.z },
+            obstacles
+        );
+        this.updatePathVisualization(currentPath);
+        
+        // Show message to player
+        if (this.gameState.wave > 1) {
+            alert(`Congratulations! You've survived ${this.gameState.wave} waves. You get a new shape to add to your maze!`);
+        }
+        
+        console.log('Building phase started');
     }
 
     updatePathVisualization(waypoints) {
@@ -546,7 +590,7 @@ export class SinglePlayerGame {
         if (this.loadingScreen) this.loadingScreen.cleanup?.();
         
         // Cleanup input managers
-        if (this.inputManager) this.inputManager.cleanup?.();
+        if (this.inputManager) this.inputManager.destroy?.();
         if (this.mazeInputManager) this.mazeInputManager.cleanup();
         
         // Cleanup scene

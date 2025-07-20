@@ -211,14 +211,20 @@ export class MazeBuilderUI {
 
     updateCardDisplay() {
         const shapesRemaining = this.mazeState.currentShapeHand.length;
+        console.log('Updating card display. Shapes remaining:', shapesRemaining);
+        console.log('Current hand:', this.mazeState.currentShapeHand.map(s => s.name));
         
         // Update shapes counter
         this.shapesCounter.textContent = `Shapes remaining: ${shapesRemaining}`;
 
         // Hide UI if no shapes remaining
         if (shapesRemaining === 0) {
-            this.cardStack.style.display = 'none';
-            this.shapesCounter.style.display = 'none';
+            if (this.cardStack) {
+                this.cardStack.style.display = 'none';
+            }
+            if (this.shapesCounter) {
+                this.shapesCounter.style.display = 'none';
+            }
             
             if (this.isMultiplayer) {
                 // Show waiting message in multiplayer mode
@@ -234,14 +240,25 @@ export class MazeBuilderUI {
         }
 
         // Show everything if shapes available
-        this.cardStack.style.display = 'block';
-        this.shapesCounter.style.display = 'block';
+        if (this.cardStack) {
+            this.cardStack.style.display = 'block';
+            this.cardStack.style.opacity = '1';
+        }
+        if (this.shapesCounter) {
+            this.shapesCounter.style.display = 'block';
+        }
+        if (this.playingCard) {
+            this.playingCard.style.opacity = '1';
+            this.playingCard.style.transform = 'scale(1)';
+        }
 
         // Get current shape
         const currentShape = this.mazeState.currentShapeHand[0];
         if (currentShape) {
+            console.log('Updating display with shape:', currentShape.name);
             this.updateShapeDisplay(currentShape);
         } else {
+            console.log('No shape to display, clearing shape display');
             this.clearShapeDisplay();
         }
     }
@@ -443,6 +460,24 @@ export class MazeBuilderUI {
         }, 500);
     }
 
+    // Show the maze builder UI
+    show() {
+        if (this.container) {
+            this.container.style.display = 'block';
+            // Make sure card stack is visible
+            if (this.cardStack) {
+                this.cardStack.style.display = 'block';
+            }
+            // Make sure shapes counter is visible
+            if (this.shapesCounter) {
+                this.shapesCounter.style.display = 'block';
+            }
+            // Update the card display to show current shape
+            this.updateCardDisplay();
+            console.log('MazeBuilderUI shown with shapes:', this.mazeState.currentShapeHand.map(s => s.name));
+        }
+    }
+
     // Hide the maze builder UI
     hide() {
         if (this.container) {
@@ -451,12 +486,5 @@ export class MazeBuilderUI {
         
         // Hide waiting message when transitioning to defense
         this.hideWaitingMessage();
-    }
-
-    // Show the maze builder UI
-    show() {
-        if (this.container) {
-            this.container.style.display = 'block';
-        }
     }
 } 
